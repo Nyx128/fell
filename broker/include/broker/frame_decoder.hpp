@@ -8,6 +8,10 @@ namespace fell {
 
   struct Frame {
     Op op;
+    // TODO(phase3): payload causes one heap allocation per decoded frame (~80 ns on Zen 4 for
+    // small payloads). Replace with a small-buffer optimisation (inline storage for payloads
+    // <= 64 bytes, heap fallback beyond that) to bring SingleFrame decode into the 5–15 ns range.
+    // Only relevant once the reactor is zero-copy or profiling shows allocator as a top hotspot.
     std::vector<uint8_t> payload;
   };
 

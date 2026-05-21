@@ -21,6 +21,7 @@ namespace fell {
         break;
       }
       platform::set_nonblocking(fd);
+      platform::set_tcp_nodelay(fd);
       conn_mgr.add(fd, poller);
     }
   }

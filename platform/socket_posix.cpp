@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <sys/socket.h> // socket, setsockopt, bind, listen, accept
 #include <unistd.h>     // close
+#include <netinet/tcp.h>
 
 namespace fell::platform {
 
@@ -102,6 +103,12 @@ namespace fell::platform {
   }
   int recv_data(int fd, void *buf, size_t len) {
     return ::recv(fd, buf, len, 0);
+  }
+
+  void set_tcp_nodelay(int fd) {
+    int flag = 1;
+    ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
+                 &flag, sizeof(flag));
   }
 
 } // namespace fell::platform

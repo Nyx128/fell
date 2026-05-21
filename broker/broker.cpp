@@ -96,18 +96,18 @@ namespace fell {
   }
 
   bool Broker::send_all(int fd, const uint8_t *data, size_t len) {
-    size_t total_sent = 0;
-    while (total_sent < len) {
-      int sent = ::send(fd, reinterpret_cast<const char *>(data + total_sent),
-                        static_cast<int>(len - total_sent), 0);
-      if (sent < 0) {
-        if (platform::would_block()) {
-          std::this_thread::yield(); // Yield CPU slice before retrying
-          continue;
-        }
+    size_t sent = 0;
+    while (sent < len) {
+      int n =
+          ::send(fd, reinterpret_cast<const char *>(data + sent), static_cast<int>(len - sent), 0);
+      if (n < 0) {
+        // would_block here means the send buffer is full.
+        // A proper fix is a per-connection write queue + PF_WRITE event
+        // (Phase 3). For Phase 1, disconnect — a stalled connection must
+        // not block the reactor.
         return false;
       }
-      total_sent += static_cast<size_t>(sent);
+      sent += static_cast<size_t>(n);
     }
     return true;
   }

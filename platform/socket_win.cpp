@@ -121,5 +121,11 @@ namespace fell::platform {
     return ::recv(static_cast<SOCKET>(fd), reinterpret_cast<char *>(buf), static_cast<int>(len), 0);
   }
 
+  void set_tcp_nodelay(int fd) {
+    BOOL flag = TRUE;
+    ::setsockopt(static_cast<SOCKET>(fd), IPPROTO_TCP, TCP_NODELAY,
+                 reinterpret_cast<const char*>(&flag), sizeof(flag));
+  }
+
 } // namespace fell::platform
 #endif

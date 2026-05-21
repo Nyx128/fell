@@ -43,4 +43,8 @@ namespace fell::platform {
   // on error.
   int recv_data(int fd, void *buf, size_t len);
 
+  // Disable Nagle's algorithm on fd. Call once per accepted socket.
+  // Linux: setsockopt(TCP_NODELAY). Windows: same via Winsock.
+  void set_tcp_nodelay(int fd);
+
 } // namespace fell::platform

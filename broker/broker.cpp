@@ -67,34 +67,38 @@ namespace fell {
   void Broker::on_readable(ConnectionState &conn) {
     uint8_t buf[4096];
     while (true) {
-      // Read in a loop to drain the kernel buffers fully
       int n = ::recv(conn.fd, reinterpret_cast<char *>(buf), sizeof(buf), 0);
       if (n == 0) {
-        on_hangup(conn); // Clean peer disconnect
+        on_hangup(conn);
         return;
       }
       if (n < 0) {
-        if (platform::would_block()) {
-          break; // Drained all readable data
-        }
-        on_hangup(conn); // Socket error
+        if (platform::would_block())
+          break;
+        on_hangup(conn);
         return;
       }
 
       std::vector<Frame> frames;
       conn.decoder.push(buf, static_cast<size_t>(n), frames);
+
+      // Accumulate all responses for this recv batch
+      std::vector<uint8_t> batch_resp;
       for (auto &f : frames) {
         std::vector<uint8_t> resp = handler_.handle(f, conn);
-        if (!resp.empty()) {
-          if (!send_all(conn.fd, resp.data(), resp.size())) {
-            on_hangup(conn);
-            return;
-          }
+        batch_resp.insert(batch_resp.end(), resp.begin(), resp.end());
+      }
+
+      // Single send for the entire batch
+      if (!batch_resp.empty()) {
+        if (!send_all(conn.fd, batch_resp.data(), batch_resp.size())) {
+          on_hangup(conn);
+          return;
         }
       }
     }
   }
-
+  
   bool Broker::send_all(int fd, const uint8_t *data, size_t len) {
     size_t sent = 0;
     while (sent < len) {

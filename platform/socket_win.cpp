@@ -109,6 +109,7 @@ namespace fell::platform {
       ::closesocket(s);
       return -1;
     }
+    set_tcp_nodelay(static_cast<int>(s));
     return static_cast<int>(s);
   }
 

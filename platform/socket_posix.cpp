@@ -96,6 +96,7 @@ namespace fell::platform {
       ::close(s);
       return -1;
     }
+    set_tcp_nodelay(s);
     return s;
   }
   int send_data(int fd, const void *buf, size_t len) {

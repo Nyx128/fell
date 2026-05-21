@@ -1,6 +1,9 @@
 # Build directories
 build/
 out/
+#ninja style build directories
+build-release/
+build-debug/
 
 # CMake temporary and generated files
 CMakeCache.txt

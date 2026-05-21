@@ -179,6 +179,16 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (resp.op == Op::ACK) {
+    if (resp.payload.size() >= sizeof(proto::AckResp)) {
+      const auto *ack = reinterpret_cast<const proto::AckResp *>(resp.payload.data());
+      uint64_t resolved_offset = swap_be64(ack->value);
+      if (offset == 0xFFFFFFFFFFFFFFFFULL) {
+        offset = resolved_offset;
+      }
+    }
+  }
+
   std::cout << "Subscription accepted. Entering fetch loop..." << std::endl;
 
   // Fetch loop

@@ -173,7 +173,7 @@ namespace fell {
     }
     conn.subscribed = true;
 
-    return encode_ack(0);
+    return encode_ack(conn.fetch_offset);
   }
 
   std::vector<uint8_t> RequestHandler::handle_fetch(const Frame &f, ConnectionState &conn) {

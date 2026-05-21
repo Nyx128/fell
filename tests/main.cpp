@@ -1,3 +1,6 @@
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include "broker/connection_state.hpp"
 #include "broker/frame_decoder.hpp"
 #include "broker/protocol.hpp"
@@ -37,6 +40,7 @@ void test_frame_decoder() {
   // Opcode: 0x01, Payload: {0xAA}
   uint8_t complete_frame[] = {0x00, 0x00, 0x00, 0x02, 0x01, 0xAA};
   int count = decoder.push(complete_frame, sizeof(complete_frame), out);
+  (void)count;
   assert(count == 1);
   assert(out.size() == 1);
   assert(out[0].op == static_cast<Op>(0x01));
@@ -97,6 +101,9 @@ void test_topic_registry() {
   Partition *p2 = registry.get_partition("sales", 2);
   Partition *p3 = registry.get_partition("sales", 3); // out of bounds
 
+  (void)p1;
+  (void)p2;
+  (void)p3;
   assert(p0 != nullptr);
   assert(p1 != nullptr);
   assert(p2 != nullptr);
@@ -111,6 +118,7 @@ void test_topic_registry() {
 
   // Fetch from partition 0
   std::vector<Message> fetched = p0->fetch(0, 10);
+  (void)fetched;
   assert(fetched.size() == 2);
   assert(fetched[0].offset == 0);
   assert(fetched[0].payload == m1);
@@ -135,9 +143,11 @@ void test_request_handler() {
 
   // Convert error response bytes back into frame structure
   // (We know frame header is 5 bytes: 4 len, 1 op)
+  (void)err_resp;
   assert(err_resp.size() >= 5);
   assert(err_resp[4] == static_cast<uint8_t>(Op::ERROR));
   const auto *err = reinterpret_cast<const proto::ErrorResp *>(err_resp.data() + 5);
+  (void)err;
   assert(err->code == static_cast<uint8_t>(ErrCode::MALFORMED_REQUEST));
 
   // 2. Test successful topic creation
@@ -153,14 +163,17 @@ void test_request_handler() {
                                   sizeof(proto::CreateTopicReq));
 
   std::vector<uint8_t> create_resp = handler.handle(create_frame, conn);
+  (void)create_resp;
   assert(create_resp.size() >= 5);
   assert(create_resp[4] == static_cast<uint8_t>(Op::ACK));
   assert(registry.num_partitions("billing") == 2);
 
   // 3. Test topic duplicate creation fails
   std::vector<uint8_t> create_dup_resp = handler.handle(create_frame, conn);
+  (void)create_dup_resp;
   assert(create_dup_resp[4] == static_cast<uint8_t>(Op::ERROR));
   const auto *err_dup = reinterpret_cast<const proto::ErrorResp *>(create_dup_resp.data() + 5);
+  (void)err_dup;
   assert(err_dup->code == static_cast<uint8_t>(ErrCode::MALFORMED_REQUEST));
 
   // 4. Test publish
@@ -180,9 +193,11 @@ void test_request_handler() {
   pub_frame.payload = pub_payload;
 
   std::vector<uint8_t> pub_resp = handler.handle(pub_frame, conn);
+  (void)pub_resp;
   assert(pub_resp.size() >= 5);
   assert(pub_resp[4] == static_cast<uint8_t>(Op::ACK));
   const auto *ack = reinterpret_cast<const proto::AckResp *>(pub_resp.data() + 5);
+  (void)ack;
   assert(swap_be64(ack->value) == 0); // First message offset should be 0
 
   std::cout << "[Test] RequestHandler tests passed!" << std::endl;

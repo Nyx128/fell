@@ -52,3 +52,9 @@ target_include_directories(fell-consume PRIVATE broker/include)
 target_link_libraries(fell-consume PRIVATE platform)
 
 add_subdirectory(tests)
+
+# Benchmarks
+option(FELL_BUILD_BENCHMARKS "Build the performance benchmark suite" ON)
+if(FELL_BUILD_BENCHMARKS)
+  add_subdirectory(bench)
+endif()

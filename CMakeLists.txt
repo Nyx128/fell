@@ -1,0 +1,54 @@
+cmake_minimum_required(VERSION 3.24)
+project(fell LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd / IDE support
+
+include(cmake/CompilerFlags.cmake)
+
+#platform layer
+add_library(platform STATIC)
+target_include_directories(platform PUBLIC platform/include)
+
+if(WIN32)
+    target_sources(platform PRIVATE
+        platform/wsapoll_poller.cpp
+        platform/socket_win.cpp
+    )
+    target_link_libraries(platform PUBLIC ws2_32)
+    target_compile_definitions(platform PUBLIC FELL_PLATFORM_WINDOWS)
+else()
+    target_sources(platform PRIVATE
+        platform/epoll_poller.cpp
+        platform/socket_posix.cpp
+    )
+    target_compile_definitions(platform PUBLIC FELL_PLATFORM_LINUX)
+endif()
+
+#broker library
+add_library(broker_lib STATIC
+    broker/acceptor.cpp
+    broker/connection_manager.cpp
+    broker/frame_decoder.cpp
+    broker/request_handler.cpp
+    broker/topic_registry.cpp
+    broker/broker.cpp
+)
+target_include_directories(broker_lib PUBLIC broker/include)
+target_link_libraries(broker_lib PUBLIC platform)
+
+#executables
+add_executable(felld felld/main.cpp)
+target_link_libraries(felld PRIVATE broker_lib)
+
+add_executable(fell-produce cli/producer_cli.cpp)
+target_include_directories(fell-produce PRIVATE broker/include)
+target_link_libraries(fell-produce PRIVATE platform)
+
+add_executable(fell-consume cli/consumer_cli.cpp)
+target_include_directories(fell-consume PRIVATE broker/include)
+target_link_libraries(fell-consume PRIVATE platform)
+
+add_subdirectory(tests)

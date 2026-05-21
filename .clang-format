@@ -1,0 +1,9 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+NamespaceIndentation: All
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: None
+ColumnLimit: 100
+KeepEmptyLinesAtTheStartOfBlocks: false
+BinPackParameters: true
+BinPackArguments: true

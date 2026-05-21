@@ -1,0 +1,56 @@
+# Build directories
+build/
+out/
+
+# CMake temporary and generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeSettings.json
+cmake_install.cmake
+Makefile
+install/
+
+# Visual Studio / MSVC files
+.vs/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.filters
+*.db
+*.opendb
+*.ipch
+ipch/
+x64/
+x86/
+ARM/
+Debug/
+Release/
+
+# Visual Studio Code
+.vscode/
+
+# Compiled Object Files and Libraries
+*.o
+*.obj
+*.lib
+*.a
+*.dll
+*.so
+*.dylib
+*.exp
+*.ilk
+*.pdb
+
+# Executables
+*.exe
+*.out
+*.app
+felld
+fell-produce
+fell-consume
+fell-tests
+
+# OS specific files
+.DS_Store
+Thumbs.db

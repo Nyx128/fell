@@ -4,6 +4,7 @@
 #include "broker/request_handler.hpp"
 #include "broker/topic_registry.hpp"
 #include "platform/ipoller.hpp"
+#include "platform/socket.hpp"
 #include <atomic>
 #include <memory>
 
@@ -11,7 +12,7 @@ namespace fell {
 
   class Broker {
   public:
-    Broker();
+    Broker(const std::filesystem::path& data_dir);
     ~Broker();
 
     void run(uint16_t port);
@@ -23,7 +24,7 @@ namespace fell {
     void on_hangup(ConnectionState &conn);
 
     // Sends all response bytes to the client, handling non-blocking short writes
-    bool send_all(int fd, const uint8_t *data, size_t len);
+    bool send_all(socket_t fd, const uint8_t *data, size_t len);
 
     std::unique_ptr<platform::IPoller> poller_;
     Acceptor acceptor_;

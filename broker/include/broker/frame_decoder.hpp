@@ -21,7 +21,7 @@ namespace fell {
     // Emits complete Frame objects into out[]. Returns count emitted.
     int push(const uint8_t *data, size_t len, std::vector<Frame> &out);
 
-    // Reset internal buffer — call on connection reuse or error recovery.
+    // Reset internal buffer, call on connection reuse or error recovery.
     void reset() {
       buf_.clear();
     }

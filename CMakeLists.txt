@@ -16,6 +16,7 @@ if(WIN32)
     target_sources(platform PRIVATE
         platform/wsapoll_poller.cpp
         platform/socket_win.cpp
+        platform/file_win.cpp
     )
     target_link_libraries(platform PUBLIC ws2_32)
     target_compile_definitions(platform PUBLIC FELL_PLATFORM_WINDOWS)
@@ -23,9 +24,21 @@ else()
     target_sources(platform PRIVATE
         platform/epoll_poller.cpp
         platform/socket_posix.cpp
+        platform/file_posix.cpp
     )
     target_compile_definitions(platform PUBLIC FELL_PLATFORM_LINUX)
 endif()
+
+#storage library
+add_library(storage_lib STATIC
+    storage/segment_writer.cpp
+    storage/segment_reader.cpp
+    storage/offset_index.cpp
+    storage/log_recovery.cpp
+    storage/partition_store.cpp
+)
+target_include_directories(storage_lib PUBLIC storage/include)
+target_link_libraries(storage_lib PUBLIC platform)
 
 #broker library
 add_library(broker_lib STATIC
@@ -37,7 +50,7 @@ add_library(broker_lib STATIC
     broker/broker.cpp
 )
 target_include_directories(broker_lib PUBLIC broker/include)
-target_link_libraries(broker_lib PUBLIC platform)
+target_link_libraries(broker_lib PUBLIC platform storage_lib)
 
 #executables
 add_executable(felld felld/main.cpp)

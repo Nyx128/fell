@@ -278,7 +278,7 @@ namespace fell {
     resp.msg_len = static_cast<uint8_t>(len);
     std::memcpy(resp.msg, msg, len);
 
-    return encode_frame(Op::ERROR, reinterpret_cast<const uint8_t *>(&resp),
+    return encode_frame(Op::ERR, reinterpret_cast<const uint8_t *>(&resp),
                         sizeof(proto::ErrorResp));
   }
 

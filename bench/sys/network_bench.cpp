@@ -26,7 +26,7 @@ static inline uint32_t swap_be32(uint32_t v) {
 
 // ── Socket helpers ────────────────────────────────────────────────────────────
 
-static bool read_exact(int fd, void *buf, size_t len) {
+static bool read_exact(socket_t fd, void *buf, size_t len) {
   size_t total = 0;
   auto *p = static_cast<char *>(buf);
   while (total < len) {
@@ -38,7 +38,7 @@ static bool read_exact(int fd, void *buf, size_t len) {
   return true;
 }
 
-static bool write_exact(int fd, const void *buf, size_t len) {
+static bool write_exact(socket_t fd, const void *buf, size_t len) {
   size_t total = 0;
   const auto *p = static_cast<const char *>(buf);
   while (total < len) {
@@ -51,7 +51,7 @@ static bool write_exact(int fd, const void *buf, size_t len) {
 }
 
 // Stack-allocated header — no heap alloc in the hot path.
-static bool write_frame(int fd, Op op, const void *payload, size_t len) {
+static bool write_frame(socket_t fd, Op op, const void *payload, size_t len) {
   uint8_t header[5];
   uint32_t frame_len_be = swap_be32(1u + static_cast<uint32_t>(len));
   std::memcpy(header, &frame_len_be, 4);
@@ -64,7 +64,7 @@ static bool write_frame(int fd, Op op, const void *payload, size_t len) {
   return true;
 }
 
-static bool read_frame(int fd, Op &op, std::vector<uint8_t> &payload) {
+static bool read_frame(socket_t fd, Op &op, std::vector<uint8_t> &payload) {
   uint32_t len_be{};
   if (!read_exact(fd, &len_be, 4))
     return false;
@@ -103,8 +103,8 @@ static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_
                           int &ready_count) {
   Results res;
 
-  const int fd = platform::connect_socket(host.c_str(), port);
-  if (fd < 0) {
+  const socket_t fd = platform::connect_socket(host.c_str(), port);
+  if (fd == INVALID_SOCKET_T) {
     std::cerr << "[thread " << thread_id << "] connect failed\n";
     return res;
   }

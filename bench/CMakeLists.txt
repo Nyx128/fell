@@ -14,7 +14,11 @@ FetchContent_Declare(
   GIT_TAG v1.9.1
 )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c2y-extensions")
+set(HAVE_STD_REGEX ON CACHE BOOL "Force standard regex for google benchmark" FORCE)
+
+if(NOT MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c2y-extensions")
+endif()
 FetchContent_MakeAvailable(google_benchmark)
 
 add_subdirectory(micro)

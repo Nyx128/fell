@@ -1,3 +1,4 @@
+#include "include/platform/socket.hpp"
 #ifdef FELL_PLATFORM_WINDOWS
 #include "platform/ipoller.hpp"
 #include <memory>
@@ -7,7 +8,7 @@
 namespace fell::platform {
 
   struct Entry {
-    SOCKET fd;
+    socket_t fd;
     void *ctx;
   };
 
@@ -18,7 +19,7 @@ namespace fell::platform {
     std::vector<WSAPOLLFD> pfds_;
 
   public:
-    void add(int fd, uint32_t flags, void *ctx) override {
+    void add(socket_t fd, uint32_t flags, void *ctx) override {
       SOCKET s = static_cast<SOCKET>(fd);
       entries_.push_back({s, ctx});
       WSAPOLLFD pfd{};
@@ -27,7 +28,7 @@ namespace fell::platform {
       pfds_.push_back(pfd);
     }
 
-    void modify(int fd, uint32_t flags, void *ctx) override {
+    void modify(socket_t fd, uint32_t flags, void *ctx) override {
       for (size_t i = 0; i < entries_.size(); ++i) {
         if (entries_[i].fd == static_cast<SOCKET>(fd)) {
           entries_[i].ctx = ctx;
@@ -37,7 +38,7 @@ namespace fell::platform {
       }
     }
 
-    void remove(int fd) override {
+    void remove(socket_t fd) override {
       for (size_t i = 0; i < entries_.size(); ++i) {
         if (entries_[i].fd == static_cast<SOCKET>(fd)) {
           entries_.erase(entries_.begin() + static_cast<ptrdiff_t>(i));

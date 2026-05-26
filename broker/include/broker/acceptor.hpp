@@ -17,7 +17,7 @@ namespace fell {
     }
 
   private:
-    int listen_fd_ = -1;
+    socket_t listen_fd_ = INVALID_SOCKET_T;
   };
 
 } // namespace fell

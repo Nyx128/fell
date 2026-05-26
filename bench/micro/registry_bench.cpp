@@ -9,7 +9,7 @@
 // bookkeeping) from variable cost (payload copy).
 
 static void BM_Registry_SingleThreadAppend(benchmark::State &state) {
-  fell::TopicRegistry registry;
+  fell::TopicRegistry registry("bench-data");
   registry.create_topic("perf", 1);
   fell::Partition *partition = registry.get_partition("perf", 0);
 
@@ -29,7 +29,7 @@ BENCHMARK(BM_Registry_SingleThreadAppend)->Arg(64)->Arg(256)->Arg(1024)->Arg(819
 // Parameterised over fetch batch size.
 
 static void BM_Registry_SingleThreadFetch(benchmark::State &state) {
-  fell::TopicRegistry registry;
+  fell::TopicRegistry registry("bench-data");
   registry.create_topic("perf", 1);
   fell::Partition *partition = registry.get_partition("perf", 0);
 
@@ -67,7 +67,7 @@ static void BM_Registry_ConcurrentAppends(benchmark::State &state) {
   static fell::Partition *partition = nullptr;
 
   std::call_once(init_flag, []() {
-    registry = new fell::TopicRegistry();
+    registry = new fell::TopicRegistry("bench-data");
     registry->create_topic("perf", 1);
     partition = registry->get_partition("perf", 0);
   });
@@ -95,7 +95,7 @@ static void BM_Registry_ConcurrentAppendsMultiPartition(benchmark::State &state)
   static constexpr int kPartitions = 8;
 
   std::call_once(init_flag, []() {
-    registry = new fell::TopicRegistry();
+    registry = new fell::TopicRegistry("bench-data");
     registry->create_topic("perf_multi", kPartitions);
   });
 

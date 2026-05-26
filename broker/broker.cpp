@@ -1,8 +1,7 @@
 #include "broker/broker.hpp"
 #include "platform/socket.hpp"
+
 #include <iostream>
-#include <thread>
-#include <vector>
 
 #ifdef FELL_PLATFORM_WINDOWS
 #include <winsock2.h>
@@ -13,7 +12,9 @@
 
 namespace fell {
 
-  Broker::Broker() : poller_(platform::make_poller()), handler_(registry_) {
+  Broker::Broker(const std::filesystem::path& data_dir) 
+      : poller_(platform::make_poller()), registry_(data_dir), handler_(registry_) {
+    registry_.recover_all();
   }
 
   Broker::~Broker() {
@@ -98,8 +99,8 @@ namespace fell {
       }
     }
   }
-  
-  bool Broker::send_all(int fd, const uint8_t *data, size_t len) {
+
+  bool Broker::send_all(socket_t fd, const uint8_t *data, size_t len) {
     size_t sent = 0;
     while (sent < len) {
       int n =

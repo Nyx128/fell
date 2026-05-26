@@ -1,6 +1,9 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
+#ifdef ERROR
+#undef ERROR
+#endif
 #include "broker/connection_state.hpp"
 #include "broker/frame_decoder.hpp"
 #include "broker/protocol.hpp"
@@ -86,11 +89,9 @@ void test_frame_decoder() {
 
 void test_topic_registry() {
   std::cout << "[Test] Running TopicRegistry tests..." << std::endl;
-  TopicRegistry registry;
+  TopicRegistry registry("test-data");
 
-  // Create topic with 3 partitions
   assert(registry.create_topic("sales", 3) == true);
-  // Topic duplicate creation should fail
   assert(registry.create_topic("sales", 3) == false);
 
   assert(registry.num_partitions("sales") == 3);
@@ -109,14 +110,12 @@ void test_topic_registry() {
   assert(p2 != nullptr);
   assert(p3 == nullptr);
 
-  // Append to partition 0
   std::vector<uint8_t> m1 = {0x10, 0x20};
   std::vector<uint8_t> m2 = {0x30};
 
   assert(p0->append(m1) == 0);
   assert(p0->append(m2) == 1);
 
-  // Fetch from partition 0
   std::vector<Message> fetched = p0->fetch(0, 10);
   (void)fetched;
   assert(fetched.size() == 2);
@@ -128,9 +127,10 @@ void test_topic_registry() {
   std::cout << "[Test] TopicRegistry tests passed!" << std::endl;
 }
 
+
 void test_request_handler() {
   std::cout << "[Test] Running RequestHandler tests..." << std::endl;
-  TopicRegistry registry;
+  TopicRegistry registry("test-data");
   RequestHandler handler(registry);
   ConnectionState conn;
   conn.fd = 99;
@@ -145,7 +145,7 @@ void test_request_handler() {
   // (We know frame header is 5 bytes: 4 len, 1 op)
   (void)err_resp;
   assert(err_resp.size() >= 5);
-  assert(err_resp[4] == static_cast<uint8_t>(Op::ERROR));
+  assert(err_resp[4] == static_cast<uint8_t>(Op::ERR));
   const auto *err = reinterpret_cast<const proto::ErrorResp *>(err_resp.data() + 5);
   (void)err;
   assert(err->code == static_cast<uint8_t>(ErrCode::MALFORMED_REQUEST));
@@ -171,7 +171,7 @@ void test_request_handler() {
   // 3. Test topic duplicate creation fails
   std::vector<uint8_t> create_dup_resp = handler.handle(create_frame, conn);
   (void)create_dup_resp;
-  assert(create_dup_resp[4] == static_cast<uint8_t>(Op::ERROR));
+  assert(create_dup_resp[4] == static_cast<uint8_t>(Op::ERR));
   const auto *err_dup = reinterpret_cast<const proto::ErrorResp *>(create_dup_resp.data() + 5);
   (void)err_dup;
   assert(err_dup->code == static_cast<uint8_t>(ErrCode::MALFORMED_REQUEST));

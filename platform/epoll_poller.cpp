@@ -1,6 +1,6 @@
 #ifdef FELL_PLATFORM_LINUX
 #include "platform/ipoller.hpp"
-#include <algorithm> // std::min
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <sys/epoll.h>
@@ -21,21 +21,21 @@ namespace fell::platform {
       ::close(epfd_);
     }
 
-    void add(int fd, uint32_t flags, void *ctx) override {
+    void add(socket_t fd, uint32_t flags, void *ctx) override {
       epoll_event ev{};
       ev.events = to_epoll(flags);
       ev.data.ptr = ctx;
       ::epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &ev);
     }
 
-    void modify(int fd, uint32_t flags, void *ctx) override {
+    void modify(socket_t fd, uint32_t flags, void *ctx) override {
       epoll_event ev{};
       ev.events = to_epoll(flags);
       ev.data.ptr = ctx;
       ::epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &ev);
     }
 
-    void remove(int fd) override {
+    void remove(socket_t fd) override {
       ::epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);
     }
 
@@ -56,7 +56,8 @@ namespace fell::platform {
 
   private:
     static uint32_t to_epoll(uint32_t f) {
-      uint32_t e = EPOLLERR | EPOLLHUP; // always watch for errors
+      // always check for errors
+      uint32_t e = EPOLLERR | EPOLLHUP;
       if (f & PF_READ)
         e |= EPOLLIN;
       if (f & PF_WRITE)

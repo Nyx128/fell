@@ -1,3 +1,4 @@
+#include "include/platform/socket.hpp"
 #ifdef FELL_PLATFORM_WINDOWS
 #include "platform/socket.hpp"
 #include <WinSock2.h>
@@ -23,7 +24,7 @@ namespace fell::platform {
 
   // Source:
   // https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-ioctlsocket
-  void set_nonblocking(int fd) {
+  void set_nonblocking(socket_t fd) {
     u_long mode = 1;
     int res = ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &mode);
     if (res != NO_ERROR) {
@@ -33,11 +34,11 @@ namespace fell::platform {
 
   // Source:
   // https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-closesocket
-  int close_socket(int fd) {
-    return closesocket(static_cast<SOCKET>(fd));
+  int close_socket(socket_t fd) {
+    return closesocket(fd);
   }
 
-  int create_listen_socket(uint16_t port) {
+  socket_t create_listen_socket(uint16_t port) {
     // Create TCP socket
     SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET)
@@ -66,26 +67,25 @@ namespace fell::platform {
 
     // Put the listen socket itself into nonblocking mode so accept_all()
     // can loop until WSAEWOULDBLOCK without stalling the event loop thread.
-    int fd = static_cast<int>(s);
-    set_nonblocking(fd);
-    return fd;
+    set_nonblocking(s);
+    return s;
   }
 
   bool would_block() {
     return WSAGetLastError() == WSAEWOULDBLOCK;
   }
 
-  int accept_connection(int listen_fd) {
-    SOCKET client = ::accept(static_cast<SOCKET>(listen_fd), nullptr, nullptr);
+  socket_t accept_connection(socket_t listen_fd) {
+    SOCKET client = ::accept(listen_fd, nullptr, nullptr);
     if (client == INVALID_SOCKET)
-      return -1;
-    return static_cast<int>(client);
+      return INVALID_SOCKET_T;
+    return static_cast<socket_t>(client);
   }
 
-  int connect_socket(const char *host, uint16_t port) {
+  socket_t connect_socket(const char *host, uint16_t port) {
     SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) {
-      return -1;
+      return INVALID_SOCKET_T;
     }
 
     sockaddr_in addr{};
@@ -101,31 +101,29 @@ namespace fell::platform {
         ::freeaddrinfo(res);
       } else {
         ::closesocket(s);
-        return -1;
+        return INVALID_SOCKET_T;
       }
     }
 
     if (::connect(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == SOCKET_ERROR) {
       ::closesocket(s);
-      return -1;
+      return INVALID_SOCKET_T;
     }
     set_tcp_nodelay(static_cast<int>(s));
     return static_cast<int>(s);
   }
 
-  int send_data(int fd, const void *buf, size_t len) {
-    return ::send(static_cast<SOCKET>(fd), reinterpret_cast<const char *>(buf),
-                  static_cast<int>(len), 0);
+  int send_data(socket_t fd, const void *buf, size_t len) {
+    return ::send(fd, reinterpret_cast<const char *>(buf), static_cast<int>(len), 0);
   }
 
-  int recv_data(int fd, void *buf, size_t len) {
-    return ::recv(static_cast<SOCKET>(fd), reinterpret_cast<char *>(buf), static_cast<int>(len), 0);
+  int recv_data(socket_t fd, void *buf, size_t len) {
+    return ::recv(fd, reinterpret_cast<char *>(buf), static_cast<int>(len), 0);
   }
 
-  void set_tcp_nodelay(int fd) {
+  void set_tcp_nodelay(socket_t fd) {
     BOOL flag = TRUE;
-    ::setsockopt(static_cast<SOCKET>(fd), IPPROTO_TCP, TCP_NODELAY,
-                 reinterpret_cast<const char*>(&flag), sizeof(flag));
+    ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char *>(&flag), sizeof(flag));
   }
 
 } // namespace fell::platform

@@ -5,6 +5,10 @@ namespace fell {
   // Opcodes use non-overlapping ranges for request (0x0x) and response (0x1x) types
   // to simplify debugging and protocol analysis.
 
+#ifdef ERROR
+#undef ERROR
+#endif
+
   enum class Op : uint8_t {
     // client to broker
     CREATE_TOPIC = 0x01,
@@ -15,7 +19,7 @@ namespace fell {
 
     // broker to client
     ACK = 0x10,
-    ERROR = 0x11,
+    ERR = 0x11,
     FETCH_RESPONSE = 0x12,
   };
 

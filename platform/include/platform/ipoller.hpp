@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <memory>
 
+#include "platform/socket.hpp"
+
 namespace fell::platform {
 
   // Own bitmask constants — never expose OS-level EPOLLIN/POLLRDNORM above this
@@ -21,9 +23,9 @@ namespace fell::platform {
   public:
     virtual ~IPoller() = default;
 
-    virtual void add(int fd, uint32_t flags, void *ctx) = 0;
-    virtual void modify(int fd, uint32_t flags, void *ctx) = 0;
-    virtual void remove(int fd) = 0;
+    virtual void add(socket_t fd, uint32_t flags, void *ctx) = 0;
+    virtual void modify(socket_t fd, uint32_t flags, void *ctx) = 0;
+    virtual void remove(socket_t fd) = 0;
 
     // Blocks up to timeout_ms (-1 = indefinite).
     // Writes up to max ready events into out[].

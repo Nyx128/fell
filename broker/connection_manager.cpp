@@ -3,7 +3,7 @@
 #include <cassert>
 
 namespace fell {
-  ConnectionState *ConnectionManager::add(int fd, platform::IPoller &poller) {
+  ConnectionState *ConnectionManager::add(socket_t fd, platform::IPoller &poller) {
     auto it = conns_.find(fd);
     if (it != conns_.end()) {
       poller.remove(fd);
@@ -19,7 +19,7 @@ namespace fell {
     return ptr;
   }
 
-  void ConnectionManager::remove(int fd, platform::IPoller &poller) {
+  void ConnectionManager::remove(socket_t fd, platform::IPoller &poller) {
     auto it = conns_.find(fd);
     if (it != conns_.end()) {
       poller.remove(fd);

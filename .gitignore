@@ -57,3 +57,6 @@ fell-tests
 # OS specific files
 .DS_Store
 Thumbs.db
+
+#clangd stuff
+compile_commands.json

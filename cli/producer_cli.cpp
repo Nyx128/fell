@@ -30,7 +30,7 @@ struct Frame {
 };
 
 // Blocking helper to read exactly N bytes from the socket
-bool read_exact(int fd, void *buf, size_t len) {
+bool read_exact(socket_t fd, void *buf, size_t len) {
   size_t total = 0;
   char *p = static_cast<char *>(buf);
   while (total < len) {
@@ -43,7 +43,7 @@ bool read_exact(int fd, void *buf, size_t len) {
 }
 
 // Blocking helper to write exactly N bytes to the socket
-bool write_exact(int fd, const void *buf, size_t len) {
+bool write_exact(socket_t fd, const void *buf, size_t len) {
   size_t total = 0;
   const char *p = static_cast<const char *>(buf);
   while (total < len) {
@@ -55,7 +55,7 @@ bool write_exact(int fd, const void *buf, size_t len) {
   return true;
 }
 
-bool write_frame(int fd, Op op, const void *payload, size_t len) {
+bool write_frame(socket_t fd, Op op, const void *payload, size_t len) {
   std::vector<uint8_t> header(5);
   uint32_t frame_len = 1 + static_cast<uint32_t>(len);
 
@@ -72,7 +72,7 @@ bool write_frame(int fd, Op op, const void *payload, size_t len) {
   return true;
 }
 
-bool read_frame(int fd, Frame &frame) {
+bool read_frame(socket_t fd, Frame &frame) {
   uint32_t len_be;
   if (!read_exact(fd, &len_be, 4))
     return false;
@@ -135,8 +135,8 @@ int main(int argc, char *argv[]) {
 
   platform::platform_net_init();
 
-  int fd = platform::connect_socket(host.c_str(), port);
-  if (fd < 0) {
+  socket_t fd = platform::connect_socket(host.c_str(), port);
+  if (fd == INVALID_SOCKET_T) {
     std::cerr << "Failed to connect to broker at " << host << ":" << port << std::endl;
     platform::platform_net_cleanup();
     return 1;
@@ -166,7 +166,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
-    if (resp.op == Op::ERROR) {
+    if (resp.op == Op::ERR) {
       const auto *err = reinterpret_cast<const proto::ErrorResp *>(resp.payload.data());
       std::string msg(err->msg, err->msg_len);
       std::cerr << "CREATE_TOPIC failed: " << msg << std::endl;
@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
       break;
     }
 
-    if (resp.op == Op::ERROR) {
+    if (resp.op == Op::ERR) {
       const auto *err = reinterpret_cast<const proto::ErrorResp *>(resp.payload.data());
       std::string msg(err->msg, err->msg_len);
       std::cerr << "PUBLISH failed: " << msg << std::endl;

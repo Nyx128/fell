@@ -1,14 +1,14 @@
 #ifdef FELL_PLATFORM_LINUX
 #include "platform/socket.hpp"
-#include <arpa/inet.h> // htons
+#include <arpa/inet.h>
 #include <cerrno>
-#include <fcntl.h> // fcntl, F_SETFL, O_NONBLOCK
+#include <fcntl.h>
 #include <netdb.h>
-#include <netinet/in.h> // sockaddr_in, INADDR_ANY
-#include <stdexcept>
-#include <sys/socket.h> // socket, setsockopt, bind, listen, accept
-#include <unistd.h>     // close
+#include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stdexcept>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace fell::platform {
 
@@ -20,7 +20,7 @@ namespace fell::platform {
     // No-op on Linux.
   }
 
-  void set_nonblocking(int fd) {
+  void set_nonblocking(socket_t fd) {
     int flags = ::fcntl(fd, F_GETFL, 0);
     if (flags == -1)
       throw std::runtime_error("fcntl F_GETFL failed");
@@ -28,11 +28,11 @@ namespace fell::platform {
       throw std::runtime_error("fcntl F_SETFL O_NONBLOCK failed");
   }
 
-  int close_socket(int fd) {
+  int close_socket(socket_t fd) {
     return ::close(fd);
   }
 
-  int create_listen_socket(uint16_t port) {
+  socket_t create_listen_socket(uint16_t port) {
     // Create TCP socket
     int s = ::socket(AF_INET, SOCK_STREAM, 0);
     if (s < 0)
@@ -67,14 +67,14 @@ namespace fell::platform {
     return errno == EAGAIN || errno == EWOULDBLOCK;
   }
 
-  int accept_connection(int listen_fd) {
+  socket_t accept_connection(socket_t listen_fd) {
     return ::accept(listen_fd, nullptr, nullptr);
   }
 
-  int connect_socket(const char *host, uint16_t port) {
+  socket_t connect_socket(const char *host, uint16_t port) {
     int s = ::socket(AF_INET, SOCK_STREAM, 0);
     if (s < 0) {
-      return -1;
+      return INVALID_SOCKET_T;
     }
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -89,27 +89,26 @@ namespace fell::platform {
         ::freeaddrinfo(res);
       } else {
         ::close(s);
-        return -1;
+        return INVALID_SOCKET_T;
       }
     }
     if (::connect(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
       ::close(s);
-      return -1;
+      return INVALID_SOCKET_T;
     }
     set_tcp_nodelay(s);
     return s;
   }
-  int send_data(int fd, const void *buf, size_t len) {
+  int send_data(socket_t fd, const void *buf, size_t len) {
     return ::send(fd, buf, len, 0);
   }
-  int recv_data(int fd, void *buf, size_t len) {
+  int recv_data(socket_t fd, void *buf, size_t len) {
     return ::recv(fd, buf, len, 0);
   }
 
-  void set_tcp_nodelay(int fd) {
+  void set_tcp_nodelay(socket_t fd) {
     int flag = 1;
-    ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
-                 &flag, sizeof(flag));
+    ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
   }
 
 } // namespace fell::platform

@@ -22,6 +22,16 @@ namespace fell::storage {
     // Rotates segment if size threshold reached after this write.
     uint64_t append(uint64_t timestamp_ms, const uint8_t *payload, uint32_t payload_size);
 
+    // Appends one message without flushing. Returns the assigned offset.
+    // Rotates segment if size threshold reached after this write.
+    uint64_t append_no_flush(uint64_t timestamp_ms, const uint8_t *payload, uint32_t payload_size);
+
+    bool flush_due() const {
+      return writes_since_flush_ >= sync_every_;
+    }
+
+    void flush();
+
     uint64_t next_offset() const {
       return next_offset_;
     }
@@ -34,7 +44,6 @@ namespace fell::storage {
 
   private:
     void write_index_entry(uint64_t offset, uint64_t file_pos);
-    void flush();
     void rotate();
     void open_files();
 

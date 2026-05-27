@@ -9,7 +9,6 @@ target_link_libraries(bench-decoder PRIVATE broker_lib platform benchmark::bench
 # bench-registry target
 add_executable(bench-registry registry_bench.cpp)
 target_link_libraries(bench-registry PRIVATE broker_lib platform benchmark::benchmark)
-target_compile_definitions(bench-registry PRIVATE FELL_DEBUG_MUTEX)
 
 # bench-storage target
 add_executable(bench-storage storage_bench.cpp)

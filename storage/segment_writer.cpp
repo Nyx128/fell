@@ -4,6 +4,7 @@
 #include "storage/log_format.hpp"
 #include <array>
 #include <system_error>
+#include <cassert>
 
 namespace fell::storage {
 
@@ -11,17 +12,28 @@ namespace fell::storage {
                                std::function<void(uint64_t)> on_rotate, uint32_t sync_every)
       : partition_dir_(partition_dir), base_offset_(base_offset), next_offset_(base_offset),
         sync_every_(sync_every), on_rotate_(std::move(on_rotate)) {
+    assert(sync_every_ > 0);
     open_files();
   }
 
   SegmentWriter::~SegmentWriter() {
     flush();
+    platform::flush_file(idx_fd_);
     platform::close_file(log_fd_);
     platform::close_file(idx_fd_);
   }
 
   uint64_t SegmentWriter::append(uint64_t timestamp_ms, const uint8_t *payload,
                                  uint32_t payload_size) {
+    uint64_t assigned_offset = append_no_flush(timestamp_ms, payload, payload_size);
+    if (flush_due()) {
+      flush();
+    }
+    return assigned_offset;
+  }
+
+  uint64_t SegmentWriter::append_no_flush(uint64_t timestamp_ms, const uint8_t *payload,
+                                          uint32_t payload_size) {
     uint64_t assigned_offset = next_offset_;
     size_t file_pos = bytes_written_;
 
@@ -44,10 +56,6 @@ namespace fell::storage {
     next_offset_++;
     writes_since_flush_++;
 
-    if(writes_since_flush_ >= sync_every_){
-      flush();
-    }
-
     if(bytes_written_ >= LOG_SEGMENT_MAX_BYTES){
       rotate();
     }
@@ -68,15 +76,13 @@ namespace fell::storage {
       if(!platform::flush_file(log_fd_)){
         throw std::system_error(errno, std::system_category(), "Failed to flush log file");
       }
-      if(!platform::flush_file(idx_fd_)){
-        throw std::system_error(errno, std::system_category(), "Failed to flush index file");
-      }
       writes_since_flush_ = 0;
     }
   }
 
   void SegmentWriter::rotate() {
     flush();
+    platform::flush_file(idx_fd_);
     platform::close_file(log_fd_);
     platform::close_file(idx_fd_);
 

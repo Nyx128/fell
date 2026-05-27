@@ -34,13 +34,13 @@ namespace fell::storage {
   }
 
   uint64_t PartitionStore::append(const uint8_t *payload, uint32_t size) {
-    auto ts = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
+    auto ts = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::system_clock::now().time_since_epoch())
+                                        .count());
 
-    std::unique_lock<std::mutex> lk(mu_);
+    std::unique_lock<DebugMutex> lk(mu_);
     const uint64_t prev_base = writer_->base_offset();
-    const uint64_t result = writer_->append(ts, payload, size);
+    const uint64_t result = writer_->append_no_flush(ts, payload, size);
     const uint64_t new_base = writer_->base_offset();
 
     // If base changed, rotation just happened — add the sealed segment.
@@ -48,20 +48,28 @@ namespace fell::storage {
       char buf[32];
       snprintf(buf, sizeof(buf), "%020llu", static_cast<unsigned long long>(prev_base));
       auto sealed_path = dir_ / (std::string(buf) + ".log");
-      auto pos = std::lower_bound(
-          sealed_segments_.begin(), sealed_segments_.end(), prev_base,
-          [](const SegmentMeta &m, uint64_t v) { return m.base_offset < v; });
+      auto pos =
+          std::lower_bound(sealed_segments_.begin(), sealed_segments_.end(), prev_base,
+                           [](const SegmentMeta &m, uint64_t v) { return m.base_offset < v; });
       if (pos == sealed_segments_.end() || pos->base_offset != prev_base)
         sealed_segments_.insert(pos, {prev_base, sealed_path});
     }
+
+    const bool need_flush = writer_->flush_due();
+    lk.unlock();
+
+    if (need_flush) {
+      writer_->flush();
+    }
+
     return result;
   }
 
   std::filesystem::path PartitionStore::find_segment_for(uint64_t offset) const {
     // Binary search for the last sealed segment with base_offset <= offset.
-    auto it = std::upper_bound(
-        sealed_segments_.begin(), sealed_segments_.end(), offset,
-        [](uint64_t val, const SegmentMeta &m) { return val < m.base_offset; });
+    auto it =
+        std::upper_bound(sealed_segments_.begin(), sealed_segments_.end(), offset,
+                         [](uint64_t val, const SegmentMeta &m) { return val < m.base_offset; });
 
     if (it != sealed_segments_.begin())
       return (--it)->path;
@@ -77,7 +85,7 @@ namespace fell::storage {
   }
 
   std::vector<StoredMessage> PartitionStore::fetch(uint64_t offset, uint16_t max_count) const {
-    std::unique_lock<std::mutex> lk(mu_);
+    std::unique_lock<DebugMutex> lk(mu_);
     const auto seg_path = find_segment_for(offset);
     lk.unlock(); // release before disk I/O — sealed segments are immutable
 
@@ -98,7 +106,7 @@ namespace fell::storage {
   }
 
   uint64_t PartitionStore::next_offset() const {
-    std::unique_lock<std::mutex> lk(mu_);
+    std::unique_lock<DebugMutex> lk(mu_);
     return writer_->next_offset();
   }
 

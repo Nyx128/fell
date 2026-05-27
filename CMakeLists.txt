@@ -48,6 +48,11 @@ add_library(storage_lib STATIC
     storage/partition_store.cpp
 )
 target_include_directories(storage_lib PUBLIC storage/include)
+
+target_compile_definitions(storage_lib PUBLIC
+    $<$<CONFIG:Debug>:FELL_DEBUG_MUTEX>
+)
+
 target_link_libraries(storage_lib PUBLIC platform)
 if(MSVC)
     target_compile_options(storage_lib PRIVATE /WX)

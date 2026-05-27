@@ -1,6 +1,5 @@
 #include "storage/log_recovery.hpp"
 #include "storage/segment_reader.hpp"
-#include "platform/file.hpp"
 #include <filesystem>
 #include <string>
 
@@ -37,9 +36,7 @@ namespace fell::storage {
     size_t seg_size = std::filesystem::file_size(last_path);
     if (end_pos < seg_size) {
       // corrupted data section found
-      file_t fd = platform::open_file_append(last_path);
-      platform::truncate_file(fd, end_pos);
-      platform::close_file(fd);
+      std::filesystem::resize_file(last_path, end_pos);
       rr.truncated = true;
     }
 

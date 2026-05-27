@@ -20,6 +20,11 @@ if(WIN32)
     )
     target_link_libraries(platform PUBLIC ws2_32)
     target_compile_definitions(platform PUBLIC FELL_PLATFORM_WINDOWS)
+    if(MSVC)
+        target_compile_options(platform PRIVATE /WX)
+    else()
+        target_compile_options(platform PRIVATE -Werror)
+    endif()
 else()
     target_sources(platform PRIVATE
         platform/epoll_poller.cpp
@@ -27,6 +32,11 @@ else()
         platform/file_posix.cpp
     )
     target_compile_definitions(platform PUBLIC FELL_PLATFORM_LINUX)
+    if(MSVC)
+        target_compile_options(platform PRIVATE /WX)
+    else()
+        target_compile_options(platform PRIVATE -Werror)
+    endif()
 endif()
 
 #storage library
@@ -39,6 +49,11 @@ add_library(storage_lib STATIC
 )
 target_include_directories(storage_lib PUBLIC storage/include)
 target_link_libraries(storage_lib PUBLIC platform)
+if(MSVC)
+    target_compile_options(storage_lib PRIVATE /WX)
+else()
+    target_compile_options(storage_lib PRIVATE -Werror)
+endif()
 
 #broker library
 add_library(broker_lib STATIC
@@ -51,19 +66,40 @@ add_library(broker_lib STATIC
 )
 target_include_directories(broker_lib PUBLIC broker/include)
 target_link_libraries(broker_lib PUBLIC platform storage_lib)
+if(MSVC)
+    target_compile_options(broker_lib PRIVATE /WX)
+else()
+    target_compile_options(broker_lib PRIVATE -Werror)
+endif()
 
 #executables
 add_executable(felld felld/main.cpp)
 target_link_libraries(felld PRIVATE broker_lib)
+if(MSVC)
+    target_compile_options(felld PRIVATE /WX)
+else()
+    target_compile_options(felld PRIVATE -Werror)
+endif()
 
 add_executable(fell-produce cli/producer_cli.cpp)
 target_include_directories(fell-produce PRIVATE broker/include)
 target_link_libraries(fell-produce PRIVATE platform)
+if(MSVC)
+    target_compile_options(fell-produce PRIVATE /WX)
+else()
+    target_compile_options(fell-produce PRIVATE -Werror)
+endif()
 
 add_executable(fell-consume cli/consumer_cli.cpp)
 target_include_directories(fell-consume PRIVATE broker/include)
 target_link_libraries(fell-consume PRIVATE platform)
+if(MSVC)
+    target_compile_options(fell-consume PRIVATE /WX)
+else()
+    target_compile_options(fell-consume PRIVATE -Werror)
+endif()
 
+enable_testing()
 add_subdirectory(tests)
 
 # Benchmarks

@@ -13,7 +13,7 @@ namespace fell::storage {
 
     size_t fsize = std::filesystem::file_size(idx_path);
     uint64_t num_entries = fsize / sizeof(IndexEntry);
-    entries_.reserve(num_entries);
+    entries_.resize(num_entries);
 
     // TODO: perhaps find a way i dont have to iterate through the vector 2 times to fix endianess
     // make it faster? if thats possible

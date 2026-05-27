@@ -12,8 +12,8 @@
 
 namespace fell {
 
-  Broker::Broker(const std::filesystem::path& data_dir) 
-      : poller_(platform::make_poller()), registry_(data_dir), handler_(registry_) {
+  Broker::Broker(const std::filesystem::path& data_dir, size_t max_frame_size) 
+      : poller_(platform::make_poller()), conn_mgr_(max_frame_size), registry_(data_dir), handler_(registry_) {
     registry_.recover_all();
   }
 
@@ -81,7 +81,11 @@ namespace fell {
       }
 
       std::vector<Frame> frames;
-      conn.decoder.push(buf, static_cast<size_t>(n), frames);
+      if (conn.decoder.push(buf, static_cast<size_t>(n), frames) == -1) {
+        std::cerr << "[Broker] Client sent frame exceeding max size limit. Disconnecting fd " << conn.fd << std::endl;
+        on_hangup(conn);
+        return;
+      }
 
       // Accumulate all responses for this recv batch
       std::vector<uint8_t> batch_resp;

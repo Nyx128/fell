@@ -120,10 +120,11 @@ namespace fell {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition registry lookup failed");
     }
 
-    // Extract message payload and append to partition
-    std::vector<uint8_t> msg_payload(f.payload.begin() + sizeof(proto::PublishReq),
-                                     f.payload.end());
-    uint64_t offset = p->append(std::move(msg_payload));
+    // Extract message payload and append to partition directly
+    const uint8_t* payload_ptr = f.payload.data() + sizeof(proto::PublishReq);
+    uint32_t payload_len = static_cast<uint32_t>(f.payload.size() - sizeof(proto::PublishReq));
+    
+    uint64_t offset = p->append(payload_ptr, payload_len);
     return encode_ack(offset);
   }
 

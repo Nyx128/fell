@@ -9,8 +9,8 @@ namespace fell {
     store_ = std::make_unique<storage::PartitionStore>(data_dir);
   }
 
-  uint64_t Partition::append(std::vector<uint8_t> payload) {
-    return store_->append(payload.data(), static_cast<uint32_t>(payload.size()));
+  uint64_t Partition::append(const uint8_t* payload, uint32_t size) {
+    return store_->append(payload, size);
   }
 
   std::vector<Message> Partition::fetch(uint64_t offset, uint16_t max_count) const {

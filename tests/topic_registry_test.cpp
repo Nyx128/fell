@@ -40,11 +40,11 @@ TEST_F(TopicRegistryTest, AppendAndFetch) {
   ASSERT_NE(p2, nullptr);
   EXPECT_EQ(p3, nullptr);
 
-  std::vector<uint8_t> m1 = {0x10, 0x20};
-  std::vector<uint8_t> m2 = {0x30};
+  std::vector<uint8_t> m1 = {0xAA};
+  std::vector<uint8_t> m2 = {0xBB, 0xCC};
 
-  EXPECT_EQ(p0->append(m1), 0);
-  EXPECT_EQ(p0->append(m2), 1);
+  EXPECT_EQ(p0->append(m1.data(), m1.size()), 0);
+  EXPECT_EQ(p0->append(m2.data(), m2.size()), 1);
 
   std::vector<Message> fetched = p0->fetch(0, 10);
   

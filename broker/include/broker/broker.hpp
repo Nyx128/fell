@@ -12,7 +12,7 @@ namespace fell {
 
   class Broker {
   public:
-    Broker(const std::filesystem::path& data_dir);
+    Broker(const std::filesystem::path& data_dir, size_t max_frame_size = 1048576);
     ~Broker();
 
     void run(uint16_t port);

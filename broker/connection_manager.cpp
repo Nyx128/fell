@@ -11,7 +11,7 @@ namespace fell {
       conns_.erase(it);
     }
 
-    auto conn = std::make_unique<ConnectionState>();
+    auto conn = std::make_unique<ConnectionState>(max_frame_size_);
     conn->fd = fd;
     ConnectionState *ptr = conn.get();
     conns_.emplace(fd, std::move(conn));

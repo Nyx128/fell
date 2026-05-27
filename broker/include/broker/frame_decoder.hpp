@@ -17,8 +17,11 @@ namespace fell {
 
   class FrameDecoder {
   public:
+    explicit FrameDecoder(size_t max_frame_size = 1048576) : max_frame_size_(max_frame_size) {}
+
     // Append raw bytes received from a single read() call.
     // Emits complete Frame objects into out[]. Returns count emitted.
+    // Returns -1 if max_frame_size is exceeded (fatal error).
     int push(const uint8_t *data, size_t len, std::vector<Frame> &out);
 
     // Reset internal buffer, call on connection reuse or error recovery.
@@ -28,6 +31,7 @@ namespace fell {
 
   private:
     std::vector<uint8_t> buf_;
+    size_t max_frame_size_;
   };
 
 } // namespace fell

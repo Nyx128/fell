@@ -19,7 +19,7 @@ namespace fell {
     Partition(const std::filesystem::path &data_dir);
 
     // Appends payload, assigns next offset, returns assigned offset.
-    uint64_t append(std::vector<uint8_t> payload);
+    uint64_t append(const uint8_t* payload, uint32_t size);
 
     // Returns up to max_count messages starting at offset.
     // Returns empty vector if offset >= next_offset_.

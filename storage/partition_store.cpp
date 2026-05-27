@@ -28,32 +28,9 @@ namespace fell::storage {
 
     uint64_t active_base = log_paths.empty() ? 0 : std::stoull(log_paths.back().stem().string());
 
-    // on_rotate scans the dir to find the newly sealed segment (any .log != new_stem
-    // not yet tracked). O(segments), called at most once per 64 MB written.
-    writer_ = std::make_unique<SegmentWriter>(
-        partition_dir, active_base, [this, partition_dir](uint64_t new_base) {
-          char buf[32];
-          snprintf(buf, sizeof(buf), "%020llu", static_cast<unsigned long long>(new_base));
-          const std::string new_stem = buf;
-
-          std::lock_guard<std::mutex> lk(mu_);
-          for (const auto &entry : std::filesystem::directory_iterator(partition_dir)) {
-            if (entry.path().extension() != ".log") continue;
-            if (entry.path().stem().string() == new_stem) continue;
-
-            uint64_t base = std::stoull(entry.path().stem().string());
-            bool already_sealed = std::any_of(
-                sealed_segments_.begin(), sealed_segments_.end(),
-                [base](const SegmentMeta &m) { return m.base_offset == base; });
-
-            if (!already_sealed) {
-              auto pos = std::lower_bound(
-                  sealed_segments_.begin(), sealed_segments_.end(), base,
-                  [](const SegmentMeta &m, uint64_t v) { return m.base_offset < v; });
-              sealed_segments_.insert(pos, {base, entry.path()});
-            }
-          }
-        });
+    // No rotation callback — PartitionStore::append detects rotation by
+    // comparing base_offset() before and after writer_->append().
+    writer_ = std::make_unique<SegmentWriter>(partition_dir, active_base, nullptr);
   }
 
   uint64_t PartitionStore::append(const uint8_t *payload, uint32_t size) {
@@ -62,7 +39,22 @@ namespace fell::storage {
             std::chrono::system_clock::now().time_since_epoch()).count());
 
     std::unique_lock<std::mutex> lk(mu_);
-    return writer_->append(ts, payload, size);
+    const uint64_t prev_base = writer_->base_offset();
+    const uint64_t result = writer_->append(ts, payload, size);
+    const uint64_t new_base = writer_->base_offset();
+
+    // If base changed, rotation just happened — add the sealed segment.
+    if (new_base != prev_base) {
+      char buf[32];
+      snprintf(buf, sizeof(buf), "%020llu", static_cast<unsigned long long>(prev_base));
+      auto sealed_path = dir_ / (std::string(buf) + ".log");
+      auto pos = std::lower_bound(
+          sealed_segments_.begin(), sealed_segments_.end(), prev_base,
+          [](const SegmentMeta &m, uint64_t v) { return m.base_offset < v; });
+      if (pos == sealed_segments_.end() || pos->base_offset != prev_base)
+        sealed_segments_.insert(pos, {prev_base, sealed_path});
+    }
+    return result;
   }
 
   std::filesystem::path PartitionStore::find_segment_for(uint64_t offset) const {

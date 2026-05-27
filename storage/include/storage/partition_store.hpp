@@ -3,8 +3,8 @@
 #include "segment_writer.hpp"
 #include "segment_reader.hpp"
 #include "offset_index.hpp"
+#include "debug_mutex.hpp"
 #include <filesystem>
-#include <mutex>
 #include <vector>
 #include <memory>
 
@@ -37,7 +37,7 @@ private:
 
     std::filesystem::path            dir_;
     std::unique_ptr<SegmentWriter>   writer_;
-    mutable std::mutex               mu_;
+    mutable DebugMutex               mu_;
 
     // Sorted list of (base_offset, log_path) for all sealed segments.
     // The active segment is always writer_->base_offset().

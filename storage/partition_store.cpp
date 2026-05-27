@@ -34,16 +34,31 @@ namespace fell::storage {
   }
 
   uint64_t PartitionStore::append(const uint8_t *payload, uint32_t size) {
-    auto ts = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                        std::chrono::system_clock::now().time_since_epoch())
-                                        .count());
+    // ── Bottleneck 2: Coarse timestamp ─────────────────────────────────────
+    // Refresh system_clock::now() only every kTimestampRefreshEvery writes
+    // instead of on every single append. Millisecond granularity makes this
+    // safe: adjacent messages may share a timestamp but ordering is still
+    // guaranteed by their offsets.
+    uint64_t ts;
+    if (ts_counter_ == 0) {
+      ts = static_cast<uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::system_clock::now().time_since_epoch())
+              .count());
+      last_timestamp_ms_ = ts;
+    } else {
+      ts = last_timestamp_ms_;
+    }
+    if (++ts_counter_ >= kTimestampRefreshEvery)
+      ts_counter_ = 0;
 
     std::unique_lock<DebugMutex> lk(mu_);
     const uint64_t prev_base = writer_->base_offset();
-    const uint64_t result = writer_->append_no_flush(ts, payload, size);
-    const uint64_t new_base = writer_->base_offset();
+    const uint64_t result    = writer_->append_no_flush(ts, payload, size);
+    const uint64_t new_base  = writer_->base_offset();
 
-    // If base changed, rotation just happened — add the sealed segment.
+    // If base changed, rotation just happened — add the sealed segment and
+    // evict its cache entry (it will be re-built from the new file on read).
     if (new_base != prev_base) {
       char buf[32];
       snprintf(buf, sizeof(buf), "%020llu", static_cast<unsigned long long>(prev_base));
@@ -53,13 +68,28 @@ namespace fell::storage {
                            [](const SegmentMeta &m, uint64_t v) { return m.base_offset < v; });
       if (pos == sealed_segments_.end() || pos->base_offset != prev_base)
         sealed_segments_.insert(pos, {prev_base, sealed_path});
+
+      // Evict the cache for the segment that just rotated so the reader
+      // and index objects are rebuilt from the finalized file on next fetch.
+      segment_cache_.erase(sealed_path.string());
     }
 
-    const bool need_flush = writer_->flush_due();
+    // ── Bottleneck 3: Flush gating ─────────────────────────────────────────
+    // Check whether a flush is due while still holding the lock, then use an
+    // atomic CAS to elect exactly one thread per flush window.  The elected
+    // thread performs the slow fdatasync *outside* the lock so it never
+    // blocks concurrent appends.
+    bool need_flush = writer_->flush_due();
+    // Volunteer to flush: only if no other thread already grabbed the job.
+    bool i_will_flush = false;
+    if (need_flush) {
+      i_will_flush = !flush_in_flight_.exchange(true, std::memory_order_acq_rel);
+    }
     lk.unlock();
 
-    if (need_flush) {
+    if (i_will_flush) {
       writer_->flush();
+      flush_in_flight_.store(false, std::memory_order_release);
     }
 
     return result;
@@ -85,18 +115,41 @@ namespace fell::storage {
   }
 
   std::vector<StoredMessage> PartitionStore::fetch(uint64_t offset, uint16_t max_count) const {
-    std::unique_lock<DebugMutex> lk(mu_);
-    const auto seg_path = find_segment_for(offset);
-    lk.unlock(); // release before disk I/O — sealed segments are immutable
+    // ── Bottleneck 4 & 5: Cached OffsetIndex + SegmentReader ──────────────
+    // We resolve the segment path and retrieve (or build) the per-segment
+    // cache *under the lock*, then do all disk I/O *outside* the lock using
+    // the shared_ptr copies.  This keeps the hot lock section O(1) (just a
+    // hash-map lookup) while reads never block concurrent writes.
+    std::shared_ptr<OffsetIndex>   idx;
+    std::shared_ptr<SegmentReader> rdr;
 
-    if (seg_path.empty())
-      return {};
+    {
+      std::unique_lock<DebugMutex> lk(mu_);
+      const auto seg_path = find_segment_for(offset);
+      if (seg_path.empty())
+        return {};
 
-    auto idx_path = seg_path;
-    idx_path.replace_extension(".idx");
+      const std::string key = seg_path.string();
+      auto &cache = segment_cache_[key];
 
-    const uint64_t file_pos = OffsetIndex(idx_path).lookup(offset);
-    auto disk_records = SegmentReader(seg_path).read(file_pos, offset, max_count);
+      // Build index lazily — one full read of the .idx file, then cached.
+      if (!cache.index) {
+        auto idx_path = seg_path;
+        idx_path.replace_extension(".idx");
+        cache.index = std::make_shared<OffsetIndex>(idx_path);
+      }
+
+      // Keep the .log fd open across calls — SegmentReader holds it.
+      if (!cache.reader) {
+        cache.reader = std::make_shared<SegmentReader>(seg_path);
+      }
+
+      idx = cache.index;
+      rdr = cache.reader;
+    } // lock released here — disk I/O below holds no lock
+
+    const uint64_t file_pos   = idx->lookup(offset);
+    auto           disk_records = rdr->read(file_pos, offset, max_count);
 
     std::vector<StoredMessage> results;
     results.reserve(disk_records.size());

@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
-#include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -48,7 +48,7 @@ namespace fell {
   private:
     std::unordered_map<std::string, std::vector<std::unique_ptr<Partition>>> topics_;
     std::filesystem::path data_root_;
-    mutable std::mutex mu_;
+    mutable std::shared_mutex mu_;
   };
 
 } // namespace fell

@@ -2,6 +2,7 @@
 #include "storage/partition_store.hpp"
 #include <chrono>
 #include <memory>
+#include <shared_mutex>
 
 namespace fell {
 
@@ -25,7 +26,7 @@ namespace fell {
   }
 
   void TopicRegistry::recover_all() {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::unique_lock<std::shared_mutex> lock(mu_);
 
     if (!std::filesystem::exists(data_root_) || !std::filesystem::is_directory(data_root_)) {
       return;
@@ -66,7 +67,7 @@ namespace fell {
   }
 
   bool TopicRegistry::create_topic(const std::string &name, uint16_t num_partitions) {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::unique_lock<std::shared_mutex> lock(mu_);
     // Check if topic already exists
     if (topics_.find(name) != topics_.end()) {
       return false;
@@ -85,8 +86,10 @@ namespace fell {
     return true;
   }
 
+  // Hot path: shared (reader) lock — multiple concurrent fetches/appends
+  // can proceed in parallel as long as no topic is being created.
   Partition *TopicRegistry::get_partition(std::string_view topic, uint16_t partition) {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::shared_lock<std::shared_mutex> lock(mu_);
 
     auto it = topics_.find(std::string(topic));
     if (it == topics_.end()) {
@@ -99,7 +102,7 @@ namespace fell {
   }
 
   uint16_t TopicRegistry::num_partitions(std::string_view topic) const {
-    std::lock_guard<std::mutex> lock(mu_);
+    std::shared_lock<std::shared_mutex> lock(mu_);
     auto it = topics_.find(std::string(topic));
     if (it == topics_.end()) {
       return 0;

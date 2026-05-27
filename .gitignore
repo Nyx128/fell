@@ -49,7 +49,6 @@ Release/
 *.exe
 *.out
 *.app
-felld
 fell-produce
 fell-consume
 fell-tests

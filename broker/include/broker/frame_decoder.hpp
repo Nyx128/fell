@@ -27,11 +27,13 @@ namespace fell {
     // Reset internal buffer, call on connection reuse or error recovery.
     void reset() {
       buf_.clear();
+      read_idx_ = 0;
     }
 
   private:
     std::vector<uint8_t> buf_;
     size_t max_frame_size_;
+    size_t read_idx_ = 0;
   };
 
 } // namespace fell

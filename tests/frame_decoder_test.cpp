@@ -58,3 +58,18 @@ TEST(FrameDecoderTest, ParsesMultipleFramesInSingleBuffer) {
   ASSERT_EQ(out[1].payload.size(), 1);
   EXPECT_EQ(out[1].payload[0], 0xDD);
 }
+
+TEST(FrameDecoderTest, RejectsFrameExceedingCeilingGuard) {
+  // Use a smaller max frame size limit for testing
+  FrameDecoder decoder(128);
+  std::vector<Frame> out;
+
+  // Send a chunk of 135 bytes (larger than 128 + 4096 is not needed since our buffer ceiling limit check is:
+  // buf_.size() - read_idx_ + len > max_frame_size_ + 4096
+  // With max_frame_size_ = 128, the limit is 128 + 4096 = 4224 bytes.
+  // Let's push data larger than 4224 bytes.
+  std::vector<uint8_t> huge_chunk(4500, 0xAA);
+  int status = decoder.push(huge_chunk.data(), huge_chunk.size(), out);
+  EXPECT_EQ(status, -1);
+}
+

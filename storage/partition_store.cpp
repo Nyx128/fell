@@ -94,10 +94,7 @@ namespace fell::storage {
     }
 
     // Protect clock VDSO overhead using our coarse timestamp cache
-    {
-      std::lock_guard<DebugMutex> meta_lk(mu_);
-      cmd.timestamp_ms = get_cached_timestamp_locked();
-    }
+    cmd.timestamp_ms = get_cached_timestamp_locked();
 
     cmd.offset = next_offset_++;
     pending_bytes_ += cmd.payload.size();

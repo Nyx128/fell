@@ -3,9 +3,13 @@
 
 namespace fell {
   int FrameDecoder::push(const uint8_t *data, size_t len, std::vector<Frame> &out) {
+    if (buf_.size() - read_idx_ + len > max_frame_size_ + 4096) {
+      return -1;
+    }
+
     buf_.insert(buf_.end(), data, data + len);
     int count = 0;
-    size_t cursor = 0;
+    size_t cursor = read_idx_;
 
     while (true) {
       if (buf_.size() - cursor < 4) {
@@ -17,6 +21,7 @@ namespace fell {
 
       if (frame_len < 1) {
         buf_.clear();
+        read_idx_ = 0;
         break;
       }
 
@@ -40,8 +45,11 @@ namespace fell {
       count++;
     }
 
-    if (cursor > 0) {
-      buf_.erase(buf_.begin(), buf_.begin() + static_cast<ptrdiff_t>(cursor));
+    read_idx_ = cursor;
+
+    if (read_idx_ >= 8192) {
+      buf_.erase(buf_.begin(), buf_.begin() + static_cast<ptrdiff_t>(read_idx_));
+      read_idx_ = 0;
     }
 
     return count;

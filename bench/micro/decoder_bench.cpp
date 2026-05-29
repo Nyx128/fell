@@ -7,12 +7,15 @@ static void BM_Decoder_SingleFrame(benchmark::State &state) {
   // Big-endian length: {0x00, 0x00, 0x00, 0x02}
   const uint8_t complete_frame[] = {0x00, 0x00, 0x00, 0x02, 0x01, 0xAA};
 
+  fell::FrameDecoder decoder;
+  std::vector<fell::Frame> out;
+  out.reserve(1);
+
   for (auto _ : state) {
-    fell::FrameDecoder decoder;
-    std::vector<fell::Frame> out;
     int count = decoder.push(complete_frame, sizeof(complete_frame), out);
     benchmark::DoNotOptimize(count);
     benchmark::DoNotOptimize(out);
+    out.clear();
   }
 }
 BENCHMARK(BM_Decoder_SingleFrame);
@@ -26,12 +29,15 @@ static void BM_Decoder_BatchFrames(benchmark::State &state) {
     buffer.insert(buffer.end(), frame, frame + sizeof(frame));
   }
 
+  fell::FrameDecoder decoder;
+  std::vector<fell::Frame> out;
+  out.reserve(100);
+
   for (auto _ : state) {
-    fell::FrameDecoder decoder;
-    std::vector<fell::Frame> out;
     int count = decoder.push(buffer.data(), buffer.size(), out);
     benchmark::DoNotOptimize(count);
     benchmark::DoNotOptimize(out);
+    out.clear();
   }
 }
 BENCHMARK(BM_Decoder_BatchFrames);
@@ -40,13 +46,16 @@ static void BM_Decoder_Fragmented(benchmark::State &state) {
   // Feed 1 byte at a time to test decoder buffer accumulation & resizing
   const uint8_t complete_frame[] = {0x00, 0x00, 0x00, 0x02, 0x01, 0xAA};
 
+  fell::FrameDecoder decoder;
+  std::vector<fell::Frame> out;
+  out.reserve(1);
+
   for (auto _ : state) {
-    fell::FrameDecoder decoder;
-    std::vector<fell::Frame> out;
     for (size_t i = 0; i < sizeof(complete_frame); ++i) {
       decoder.push(&complete_frame[i], 1, out);
     }
     benchmark::DoNotOptimize(out);
+    out.clear();
   }
 }
 BENCHMARK(BM_Decoder_Fragmented);

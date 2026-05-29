@@ -43,7 +43,8 @@ TEST_F(RequestHandlerTest, TooSmallPayloadBoundaryValidation) {
 
   Frame invalid_frame;
   invalid_frame.op = Op::CREATE_TOPIC;
-  invalid_frame.payload.resize(2); // CreateTopicReq requires 258 bytes
+  std::vector<uint8_t> dummy(2, 0);
+  invalid_frame.payload.assign(dummy.begin(), dummy.end()); // CreateTopicReq requires 258 bytes
   
   std::vector<uint8_t> err_resp = handler.handle(invalid_frame, conn);
 
@@ -135,7 +136,7 @@ TEST_F(RequestHandlerTest, PublishToTopic) {
 
   Frame pub_frame;
   pub_frame.op = Op::PUBLISH;
-  pub_frame.payload = pub_payload;
+  pub_frame.payload.assign(pub_payload.begin(), pub_payload.end());
 
   std::vector<uint8_t> pub_resp = handler.handle(pub_frame, conn);
   

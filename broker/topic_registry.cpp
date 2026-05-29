@@ -6,11 +6,12 @@
 
 namespace fell {
 
-  Partition::Partition(const std::filesystem::path &data_dir) {
-    store_ = std::make_unique<storage::PartitionStore>(data_dir);
+  Partition::Partition(const std::filesystem::path &data_dir,
+                       storage::StorageOptions storage_options) {
+    store_ = std::make_unique<storage::PartitionStore>(data_dir, storage_options);
   }
 
-  uint64_t Partition::append(const uint8_t* payload, uint32_t size) {
+  storage::AppendResult Partition::append(const uint8_t *payload, uint32_t size) {
     return store_->append(payload, size);
   }
 
@@ -22,7 +23,9 @@ namespace fell {
     return store_->next_offset();
   }
 
-  TopicRegistry::TopicRegistry(std::filesystem::path data_root) : data_root_(std::move(data_root)) {
+  TopicRegistry::TopicRegistry(std::filesystem::path data_root,
+                               storage::StorageOptions storage_options)
+      : data_root_(std::move(data_root)), storage_options_(storage_options) {
   }
 
   void TopicRegistry::recover_all() {
@@ -80,7 +83,7 @@ namespace fell {
     for (uint16_t i = 0; i < num_partitions; ++i) {
       auto partition_dir = topic_dir / ("partition-" + std::to_string(i));
       std::filesystem::create_directories(partition_dir);
-      partitions.push_back(std::make_unique<Partition>(partition_dir));
+      partitions.push_back(std::make_unique<Partition>(partition_dir, storage_options_));
     }
     topics_[name] = std::move(partitions);
     return true;

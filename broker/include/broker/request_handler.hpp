@@ -3,14 +3,37 @@
 #include "broker/connection_state.hpp"
 #include "broker/protocol.hpp"
 #include "broker/topic_registry.hpp"
+#include <vector>
 
 namespace fell {
+
+  /**
+   * @class RequestHandler
+   * @brief Stateless routing controller for network requests.
+   * 
+   * Design Insight:
+   * Translates deserialized socket network frames into partition engine storage 
+   * operations. Encodes the outcome back into length-prefixed big-endian network frames.
+   * Promotes low latency by returning raw heap buffers (`std::vector<uint8_t>`) that 
+   * can be written directly to network socket buffers.
+   */
   class RequestHandler {
   public:
+    /**
+     * @brief Creates a request handler bound to the Topic Registry.
+     */
     explicit RequestHandler(TopicRegistry &registry);
 
-    // Dispatches frame to the correct private handler.
-    // Returns serialised response bytes ready to send(). May be empty.
+    // Disable copy
+    RequestHandler(const RequestHandler &) = delete;
+    RequestHandler &operator=(const RequestHandler &) = delete;
+
+    /**
+     * @brief Parses and routes a decoded network frame.
+     * @param f Decoded network frame.
+     * @param conn Session context tracking state (e.g. partition subscription indexes).
+     * @return Encoded network byte array containing response, or empty vector.
+     */
     std::vector<uint8_t> handle(const Frame &f, ConnectionState &conn);
 
   private:
@@ -21,12 +44,8 @@ namespace fell {
 
     TopicRegistry &registry_;
 
-    // Wraps op + payload bytes into a full length-prefixed frame.
-    // length field = 1 (op byte) + payload.size(), big-endian.
     static std::vector<uint8_t> encode_frame(Op op, const uint8_t *payload, size_t len);
-    // Shorthand for an ACK frame carrying a uint64 value.
     static std::vector<uint8_t> encode_ack(uint64_t value);
-    // Shorthand for an ERROR frame.
     static std::vector<uint8_t> encode_error(ErrCode code, const char *msg = "");
   };
 

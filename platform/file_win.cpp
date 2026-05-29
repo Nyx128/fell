@@ -1,4 +1,6 @@
 #include "platform/file.hpp"
+#include <cstring>
+#include <memory>
 #include <system_error>
 
 
@@ -27,28 +29,30 @@ namespace fell::platform {
   }
 
   bool write_file_vec(file_t fd, const IOBuffer *buffers, size_t count) {
-    // Windows lacks a direct non-page-aligned writev equivalent.
-    // To maintain atomicity, we copy the buffers into a contiguous staging buffer
-    // and issue a single WriteFile call.
     size_t total_size = 0;
     for (size_t i = 0; i < count; ++i) {
       total_size += buffers[i].size;
     }
 
-    // Use a small thread-local or heap-allocated buffer.
-    // For large payloads, this does heap allocation, which is the cost of atomicity on Windows.
-    std::vector<uint8_t> staging;
-    staging.reserve(total_size);
+    constexpr size_t kStackSize = 4096;
+    uint8_t stack_buf[kStackSize];
+    std::unique_ptr<uint8_t[]> heap_buf;
+    uint8_t *staging = stack_buf;
+    if (total_size > kStackSize) {
+      heap_buf = std::make_unique<uint8_t[]>(total_size);
+      staging = heap_buf.get();
+    }
 
+    size_t offset = 0;
     for (size_t i = 0; i < count; ++i) {
       const uint8_t *ptr = static_cast<const uint8_t *>(buffers[i].data);
-      staging.insert(staging.end(), ptr, ptr + buffers[i].size);
+      std::memcpy(staging + offset, ptr, buffers[i].size);
+      offset += buffers[i].size;
     }
 
     DWORD bytes_written = 0;
-    BOOL result =
-        WriteFile(fd, staging.data(), static_cast<DWORD>(total_size), &bytes_written, nullptr);
-    return result != 0 && bytes_written == total_size;
+    BOOL result = WriteFile(fd, staging, static_cast<DWORD>(total_size), &bytes_written, nullptr);
+    return result != 0 && bytes_written == static_cast<DWORD>(total_size);
   }
 
   ssize_t pread_file(file_t fd, void *buffer, size_t size, uint64_t offset) {

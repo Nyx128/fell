@@ -1,5 +1,6 @@
 #include "broker/protocol.hpp"
 #include "platform/socket.hpp"
+#include "storage/segment_writer.hpp"
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
@@ -10,6 +11,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifdef min
+#undef min
+#endif
+
+#ifdef max
+#undef max
+#endif
 
 using namespace fell;
 
@@ -97,7 +106,8 @@ struct Results {
 // ── Worker ────────────────────────────────────────────────────────────────────
 
 static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_window,
-                          int payload_size, const std::string &host, uint16_t port,
+                          int payload_size, bool shared_partition, const std::string &host,
+                          uint16_t port,
                           // barrier state (shared across threads)
                           std::mutex &barrier_mu, std::condition_variable &barrier_cv,
                           int &ready_count) {
@@ -114,7 +124,7 @@ static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_
     proto::CreateTopicReq req{};
     req.name_len = 5;
     std::memcpy(req.name, "bench", 5);
-    req.num_partitions = swap_be16(static_cast<uint16_t>(num_threads));
+    req.num_partitions = swap_be16(static_cast<uint16_t>(shared_partition ? 1 : num_threads));
     write_frame(fd, Op::CREATE_TOPIC, &req, sizeof(req));
     Op op;
     std::vector<uint8_t> resp;
@@ -138,7 +148,7 @@ static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_
   proto::PublishReq pub{};
   pub.topic_len = 5;
   std::memcpy(pub.topic, "bench", 5);
-  pub.partition = swap_be16(static_cast<uint16_t>(thread_id));
+  pub.partition = swap_be16(static_cast<uint16_t>(shared_partition ? 0 : thread_id));
   pub.payload_size = swap_be32(static_cast<uint32_t>(msg_data.size()));
 
   std::vector<uint8_t> pub_buf(sizeof(proto::PublishReq) + msg_data.size());
@@ -210,6 +220,7 @@ int main(int argc, char *argv[]) {
   int num_threads = 4;
   int payload_sz = 256;
   int pipeline = 1;
+  bool shared_partition = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -225,6 +236,8 @@ int main(int argc, char *argv[]) {
       payload_sz = std::stoi(argv[++i]);
     else if (a == "--pipeline" && i + 1 < argc)
       pipeline = std::stoi(argv[++i]);
+    else if (a == "--shared-partition")
+      shared_partition = true;
   }
 
   std::cout << "[fell-bench] network\n"
@@ -232,10 +245,15 @@ int main(int argc, char *argv[]) {
             << "  ops:      " << total_ops << "\n"
             << "  threads:  " << num_threads << "\n"
             << "  payload:  " << payload_sz << " bytes\n"
+            << "  partition: " << (shared_partition ? "shared\n" : "dedicated\n")
             << "  pipeline: " << pipeline << (pipeline == 1 ? " (synchronous)\n" : " (pipelined)\n")
             << "\n";
 
   platform::platform_net_init();
+
+#ifdef FELL_ENABLE_STORAGE_TIMING
+  fell::storage::SegmentWriter::reset_timing();
+#endif
 
   const int ops_per_thread = total_ops / num_threads;
 
@@ -251,8 +269,8 @@ int main(int argc, char *argv[]) {
   for (int t = 0; t < num_threads; ++t) {
     workers.emplace_back([&, t]() {
       results[static_cast<size_t>(t)] =
-          run_worker(t, num_threads, ops_per_thread, pipeline, payload_sz, host, port, barrier_mu,
-                     barrier_cv, ready_count);
+          run_worker(t, num_threads, ops_per_thread, pipeline, payload_sz, shared_partition, host,
+                     port, barrier_mu, barrier_cv, ready_count);
     });
   }
   for (auto &w : workers)
@@ -306,6 +324,23 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "===============================================\n";
+
+#ifdef FELL_ENABLE_STORAGE_TIMING
+  const auto timing = fell::storage::SegmentWriter::timing_snapshot();
+  const auto avg_ns = [](uint64_t total_ns, uint64_t calls) -> double {
+    return calls == 0 ? 0.0 : static_cast<double>(total_ns) / static_cast<double>(calls);
+  };
+
+  std::cout << "\n[storage-timing]\n"
+            << "  reserve:        calls=" << timing.reserve_calls
+            << " avg_ns=" << avg_ns(timing.reserve_ns, timing.reserve_calls) << "\n"
+            << "  write_reserved: calls=" << timing.write_reserved_calls
+            << " avg_ns=" << avg_ns(timing.write_reserved_ns, timing.write_reserved_calls) << "\n"
+            << "  flush:          calls=" << timing.flush_calls
+            << " avg_ns=" << avg_ns(timing.flush_ns, timing.flush_calls) << "\n"
+            << "  rotate:         calls=" << timing.rotate_calls
+            << " avg_ns=" << avg_ns(timing.rotate_ns, timing.rotate_calls) << "\n";
+#endif
 
   platform::platform_net_cleanup();
   return 0;

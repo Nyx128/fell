@@ -1,6 +1,6 @@
 #include "broker/topic_registry.hpp"
-#include <benchmark/benchmark.h>
 #include <atomic>
+#include <benchmark/benchmark.h>
 #include <filesystem>
 #include <mutex>
 #include <thread>
@@ -31,8 +31,7 @@ static void BM_Registry_SingleThreadAppend(benchmark::State &state) {
     const std::vector<uint8_t> payload(static_cast<size_t>(state.range(0)), 0xCC);
 
     for (auto _ : state) {
-      uint64_t offset = partition->append(payload.data(), static_cast<uint32_t>(payload.size()));
-      benchmark::DoNotOptimize(offset);
+      auto offset = partition->append(payload.data(), static_cast<uint32_t>(payload.size())).offset;
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * state.range(0));
   }
@@ -88,7 +87,7 @@ public:
   // Barrier: non-zero threads spin on this until thread 0 finishes SetUp.
   static std::atomic<bool> ready;
 
-  void SetUp(const ::benchmark::State& state) override {
+  void SetUp(const ::benchmark::State &state) override {
     if (state.thread_index() == 0) {
       safe_remove_all("bench-data-concurrent");
       registry = new fell::TopicRegistry("bench-data-concurrent");
@@ -104,7 +103,7 @@ public:
     }
   }
 
-  void TearDown(const ::benchmark::State& state) override {
+  void TearDown(const ::benchmark::State &state) override {
     if (state.thread_index() == 0) {
       delete registry;
       registry = nullptr;
@@ -118,21 +117,24 @@ public:
     // so thread 0's reset is guaranteed visible before the next cycle.
   }
 };
-fell::TopicRegistry* RegistryFixture::registry = nullptr;
+fell::TopicRegistry *RegistryFixture::registry = nullptr;
 std::atomic<bool> RegistryFixture::ready{false};
 
-BENCHMARK_DEFINE_F(RegistryFixture, ConcurrentAppends)(benchmark::State& state) {
+BENCHMARK_DEFINE_F(RegistryFixture, ConcurrentAppends)(benchmark::State &state) {
   fell::Partition *partition = registry->get_partition("perf", 0);
   const std::vector<uint8_t> payload(128, 0xEE);
 
   for (auto _ : state) {
-    uint64_t off = partition->append(payload.data(), static_cast<uint32_t>(payload.size()));
+    uint64_t off = partition->append(payload.data(), static_cast<uint32_t>(payload.size())).offset;
     benchmark::DoNotOptimize(off);
   }
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * 128);
 }
-BENCHMARK_REGISTER_F(RegistryFixture, ConcurrentAppends)->Threads(1)->Threads(2)->Threads(4)->Threads(8);
-
+BENCHMARK_REGISTER_F(RegistryFixture, ConcurrentAppends)
+    ->Threads(1)
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(8);
 
 // ── Concurrent appends — multiple partitions ──────────────────────────────────
 class RegistryMultiFixture : public benchmark::Fixture {
@@ -141,7 +143,7 @@ public:
   static std::atomic<bool> ready;
   static constexpr int kPartitions = 8;
 
-  void SetUp(const ::benchmark::State& state) override {
+  void SetUp(const ::benchmark::State &state) override {
     if (state.thread_index() == 0) {
       safe_remove_all("bench-data-multi");
       registry = new fell::TopicRegistry("bench-data-multi");
@@ -154,7 +156,7 @@ public:
     }
   }
 
-  void TearDown(const ::benchmark::State& state) override {
+  void TearDown(const ::benchmark::State &state) override {
     if (state.thread_index() == 0) {
       delete registry;
       registry = nullptr;
@@ -163,21 +165,25 @@ public:
     }
   }
 };
-fell::TopicRegistry* RegistryMultiFixture::registry = nullptr;
+fell::TopicRegistry *RegistryMultiFixture::registry = nullptr;
 std::atomic<bool> RegistryMultiFixture::ready{false};
 
-BENCHMARK_DEFINE_F(RegistryMultiFixture, ConcurrentAppendsMultiPartition)(benchmark::State& state) {
+BENCHMARK_DEFINE_F(RegistryMultiFixture, ConcurrentAppendsMultiPartition)(benchmark::State &state) {
   const std::vector<uint8_t> payload(128, 0xFF);
-  const auto partition_idx = static_cast<uint16_t>(state.thread_index() % RegistryMultiFixture::kPartitions);
+  const auto partition_idx =
+      static_cast<uint16_t>(state.thread_index() % RegistryMultiFixture::kPartitions);
   fell::Partition *partition = registry->get_partition("perf_multi", partition_idx);
 
   for (auto _ : state) {
-    uint64_t off = partition->append(payload.data(), static_cast<uint32_t>(payload.size()));
+    auto off = partition->append(payload.data(), static_cast<uint32_t>(payload.size()));
     benchmark::DoNotOptimize(off);
   }
   state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * 128);
 }
 BENCHMARK_REGISTER_F(RegistryMultiFixture, ConcurrentAppendsMultiPartition)
-    ->Threads(1)->Threads(2)->Threads(4)->Threads(8);
+    ->Threads(1)
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(8);
 
 BENCHMARK_MAIN();

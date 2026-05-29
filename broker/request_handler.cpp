@@ -1,4 +1,5 @@
 #include "broker/request_handler.hpp"
+#include "storage/partition_store.hpp"
 
 namespace fell {
 
@@ -121,11 +122,14 @@ namespace fell {
     }
 
     // Extract message payload and append to partition directly
-    const uint8_t* payload_ptr = f.payload.data() + sizeof(proto::PublishReq);
+    const uint8_t *payload_ptr = f.payload.data() + sizeof(proto::PublishReq);
     uint32_t payload_len = static_cast<uint32_t>(f.payload.size() - sizeof(proto::PublishReq));
-    
-    uint64_t offset = p->append(payload_ptr, payload_len);
-    return encode_ack(offset);
+
+    storage::AppendResult result = p->append(payload_ptr, payload_len);
+    if (!result.accepted) {
+      return encode_error(ErrCode::BUSY, "Partition append queue is full");
+    }
+    return encode_ack(result.offset);
   }
 
   std::vector<uint8_t> RequestHandler::handle_subscribe(const Frame &f, ConnectionState &conn) {

@@ -12,8 +12,10 @@
 
 namespace fell {
 
-  Broker::Broker(const std::filesystem::path& data_dir, size_t max_frame_size) 
-      : poller_(platform::make_poller()), conn_mgr_(max_frame_size), registry_(data_dir), handler_(registry_) {
+  Broker::Broker(const std::filesystem::path &data_dir, size_t max_frame_size,
+                 storage::StorageOptions storage_options)
+      : poller_(platform::make_poller()), conn_mgr_(max_frame_size),
+        registry_(data_dir, storage_options), handler_(registry_) {
     registry_.recover_all();
   }
 
@@ -82,7 +84,8 @@ namespace fell {
 
       std::vector<Frame> frames;
       if (conn.decoder.push(buf, static_cast<size_t>(n), frames) == -1) {
-        std::cerr << "[Broker] Client sent frame exceeding max size limit. Disconnecting fd " << conn.fd << std::endl;
+        std::cerr << "[Broker] Client sent frame exceeding max size limit. Disconnecting fd "
+                  << conn.fd << std::endl;
         on_hangup(conn);
         return;
       }

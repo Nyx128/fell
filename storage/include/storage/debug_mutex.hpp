@@ -18,7 +18,7 @@ struct DebugMutex {
     auto tid = std::this_thread::get_id();
     if (owner_.load() == tid) {
       std::fprintf(stderr,
-                   "[DebugMutex] DOUBLE-LOCK on thread %zu — mutex already owned by this thread!\n",
+                   "[DebugMutex] DOUBLE-LOCK on thread %zu : mutex already owned by this thread!\n",
                    std::hash<std::thread::id>{}(tid));
       std::fflush(stderr);
       assert(false && "DebugMutex: same-thread double-lock detected");
@@ -42,7 +42,7 @@ struct DebugMutex {
     }
     auto held = std::chrono::steady_clock::now() - lock_time_;
     if (held > std::chrono::milliseconds(5)) {
-      std::fprintf(stderr, "[DebugMutex] SLOW UNLOCK — held for %lld ms on thread %zu\n",
+      std::fprintf(stderr, "[DebugMutex] SLOW UNLOCK : held for %lld ms on thread %zu\n",
                    std::chrono::duration_cast<std::chrono::milliseconds>(held).count(),
                    std::hash<std::thread::id>{}(std::this_thread::get_id()));
     }

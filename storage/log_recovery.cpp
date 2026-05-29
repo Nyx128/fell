@@ -15,7 +15,7 @@ namespace fell::storage {
     if (log_paths.empty())
       return {0, 0, 0, false};
 
-    RecoveryResult rr;
+    RecoveryResult rr{};
 
     std::sort(log_paths.begin(), log_paths.end());
     auto last_path = log_paths.back();
@@ -26,6 +26,7 @@ namespace fell::storage {
     uint64_t end_pos = reader.scan_valid(0, records);
 
     rr.records_recovered = static_cast<uint32_t>(records.size());
+    rr.log_end_position = end_pos;
 
     if (records.empty()) {
       rr.next_offset = seg;

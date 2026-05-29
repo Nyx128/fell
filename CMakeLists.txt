@@ -8,6 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd / IDE support
 
 include(cmake/CompilerFlags.cmake)
 
+option(FELL_ENABLE_STORAGE_TIMING "Collect internal storage timing counters" OFF)
+
 #platform layer
 add_library(platform STATIC)
 target_include_directories(platform PUBLIC platform/include)
@@ -51,6 +53,7 @@ target_include_directories(storage_lib PUBLIC storage/include)
 
 target_compile_definitions(storage_lib PUBLIC
     $<$<CONFIG:Debug>:FELL_DEBUG_MUTEX>
+    $<$<BOOL:${FELL_ENABLE_STORAGE_TIMING}>:FELL_ENABLE_STORAGE_TIMING>
 )
 
 target_link_libraries(storage_lib PUBLIC platform)

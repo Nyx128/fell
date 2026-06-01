@@ -3,6 +3,7 @@
 #include "broker/connection_state.hpp"
 #include "broker/protocol.hpp"
 #include "broker/topic_registry.hpp"
+#include <atomic>
 #include <vector>
 
 namespace fell {
@@ -39,10 +40,16 @@ namespace fell {
   private:
     std::vector<uint8_t> handle_create_topic(const Frame &f);
     std::vector<uint8_t> handle_publish(const Frame &f, ConnectionState &conn);
+    std::vector<uint8_t> handle_publish_v2(const Frame &f, ConnectionState &conn);
     std::vector<uint8_t> handle_subscribe(const Frame &f, ConnectionState &conn);
     std::vector<uint8_t> handle_fetch(const Frame &f, ConnectionState &conn);
 
     TopicRegistry &registry_;
+
+    // Phase 3 Metrics
+    std::atomic<uint64_t> publish_requests_total_{0};
+    std::atomic<uint64_t> publish_busy_total_{0};
+    std::atomic<uint64_t> bytes_published_total_{0};
 
     static std::vector<uint8_t> encode_frame(Op op, const uint8_t *payload, size_t len);
     static std::vector<uint8_t> encode_ack(uint64_t value);

@@ -107,7 +107,7 @@ struct Results {
 
 static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_window,
                           int payload_size, bool shared_partition, const std::string &host,
-                          uint16_t port,
+                          uint16_t port, const std::string &routing_key, bool retry_on_busy,
                           // barrier state (shared across threads)
                           std::mutex &barrier_mu, std::condition_variable &barrier_cv,
                           int &ready_count) {
@@ -145,15 +145,33 @@ static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_
 
   // Build publish buffer once, reused for every send.
   const std::string msg_data(payload_size, 'X');
-  proto::PublishReq pub{};
-  pub.topic_len = 5;
-  std::memcpy(pub.topic, "bench", 5);
-  pub.partition = swap_be16(static_cast<uint16_t>(shared_partition ? 0 : thread_id));
-  pub.payload_size = swap_be32(static_cast<uint32_t>(msg_data.size()));
+  std::vector<uint8_t> pub_buf;
+  Op send_op = Op::PUBLISH;
 
-  std::vector<uint8_t> pub_buf(sizeof(proto::PublishReq) + msg_data.size());
-  std::memcpy(pub_buf.data(), &pub, sizeof(proto::PublishReq));
-  std::memcpy(pub_buf.data() + sizeof(proto::PublishReq), msg_data.data(), msg_data.size());
+  if (!routing_key.empty()) {
+    send_op = Op::PUBLISH_V2;
+    proto::PublishV2Req pub{};
+    pub.topic_len = 5;
+    std::memcpy(pub.topic, "bench", 5);
+    pub.partition = swap_be16(0xFFFF); // Use routing key
+    pub.key_len = static_cast<uint8_t>(std::min(routing_key.size(), size_t(255)));
+    std::memcpy(pub.key, routing_key.data(), pub.key_len);
+    pub.payload_size = swap_be32(static_cast<uint32_t>(msg_data.size()));
+
+    pub_buf.resize(sizeof(proto::PublishV2Req) + msg_data.size());
+    std::memcpy(pub_buf.data(), &pub, sizeof(proto::PublishV2Req));
+    std::memcpy(pub_buf.data() + sizeof(proto::PublishV2Req), msg_data.data(), msg_data.size());
+  } else {
+    proto::PublishReq pub{};
+    pub.topic_len = 5;
+    std::memcpy(pub.topic, "bench", 5);
+    pub.partition = swap_be16(static_cast<uint16_t>(shared_partition ? 0 : thread_id));
+    pub.payload_size = swap_be32(static_cast<uint32_t>(msg_data.size()));
+
+    pub_buf.resize(sizeof(proto::PublishReq) + msg_data.size());
+    std::memcpy(pub_buf.data(), &pub, sizeof(proto::PublishReq));
+    std::memcpy(pub_buf.data() + sizeof(proto::PublishReq), msg_data.data(), msg_data.size());
+  }
 
   Op resp_op;
   std::vector<uint8_t> resp_payload;
@@ -166,11 +184,26 @@ static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_
 
     for (int i = 0; i < ops; ++i) {
       const auto t0 = std::chrono::high_resolution_clock::now();
+      int backoff_ms = 10;
+      bool success = false;
 
-      if (!write_frame(fd, Op::PUBLISH, pub_buf.data(), pub_buf.size()))
-        break;
-      if (!read_frame(fd, resp_op, resp_payload))
-        break;
+      while (!success) {
+        if (!write_frame(fd, send_op, pub_buf.data(), pub_buf.size()))
+          break;
+        if (!read_frame(fd, resp_op, resp_payload))
+          break;
+
+        if (resp_op == Op::ERR && resp_payload.size() >= sizeof(proto::ErrorResp)) {
+          const auto *err = reinterpret_cast<const proto::ErrorResp *>(resp_payload.data());
+          if (err->code == static_cast<uint8_t>(ErrCode::BUSY) && retry_on_busy) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+            backoff_ms = std::min(backoff_ms * 2, 1000);
+            continue;
+          }
+        }
+        success = true;
+      }
+      if (!success) break;
 
       const auto t1 = std::chrono::high_resolution_clock::now();
       res.latencies_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
@@ -186,7 +219,7 @@ static Results run_worker(int thread_id, int num_threads, int ops, int pipeline_
       const int batch = std::min(pipeline_window, ops - i);
 
       for (int w = 0; w < batch && !failed; ++w)
-        if (!write_frame(fd, Op::PUBLISH, pub_buf.data(), pub_buf.size()))
+        if (!write_frame(fd, send_op, pub_buf.data(), pub_buf.size()))
           failed = true;
 
       for (int w = 0; w < batch && !failed; ++w)
@@ -221,6 +254,8 @@ int main(int argc, char *argv[]) {
   int payload_sz = 256;
   int pipeline = 1;
   bool shared_partition = false;
+  std::string routing_key = "";
+  bool retry_on_busy = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -238,6 +273,10 @@ int main(int argc, char *argv[]) {
       pipeline = std::stoi(argv[++i]);
     else if (a == "--shared-partition")
       shared_partition = true;
+    else if (a == "--key" && i + 1 < argc)
+      routing_key = argv[++i];
+    else if (a == "--retry-on-busy")
+      retry_on_busy = true;
   }
 
   std::cout << "[fell-bench] network\n"
@@ -247,6 +286,8 @@ int main(int argc, char *argv[]) {
             << "  payload:  " << payload_sz << " bytes\n"
             << "  partition: " << (shared_partition ? "shared\n" : "dedicated\n")
             << "  pipeline: " << pipeline << (pipeline == 1 ? " (synchronous)\n" : " (pipelined)\n")
+            << "  key:      " << (routing_key.empty() ? "(none)" : routing_key) << "\n"
+            << "  retry:    " << (retry_on_busy ? "enabled" : "disabled") << "\n"
             << "\n";
 
   platform::platform_net_init();
@@ -270,7 +311,7 @@ int main(int argc, char *argv[]) {
     workers.emplace_back([&, t]() {
       results[static_cast<size_t>(t)] =
           run_worker(t, num_threads, ops_per_thread, pipeline, payload_sz, shared_partition, host,
-                     port, barrier_mu, barrier_cv, ready_count);
+                     port, routing_key, retry_on_busy, barrier_mu, barrier_cv, ready_count);
     });
   }
   for (auto &w : workers)
@@ -296,7 +337,9 @@ int main(int argc, char *argv[]) {
   }
 
   // Bytes: 5 (frame header) + sizeof(PublishReq) + payload
-  const double bytes_per_op = 5.0 + sizeof(proto::PublishReq) + static_cast<double>(payload_sz);
+  // (adjust calculation for PublishV2Req size if a key is used)
+  const double req_struct_size = routing_key.empty() ? sizeof(proto::PublishReq) : sizeof(proto::PublishV2Req);
+  const double bytes_per_op = 5.0 + req_struct_size + static_cast<double>(payload_sz);
   const double throughput_ops = static_cast<double>(total_completed) / elapsed_s;
   const double throughput_mb = throughput_ops * bytes_per_op / (1024.0 * 1024.0);
 
@@ -310,13 +353,13 @@ int main(int argc, char *argv[]) {
     std::sort(all_lat.begin(), all_lat.end());
     const double sum = std::accumulate(all_lat.begin(), all_lat.end(), 0.0);
     std::cout << "\n  Latency (per-op RTT, µs):\n"
-              << "    min:   " << all_lat.front() << "\n"
-              << "    mean:  " << sum / all_lat.size() << "\n"
-              << "    p50:   " << percentile(all_lat, 0.500) << "\n"
-              << "    p90:   " << percentile(all_lat, 0.900) << "\n"
-              << "    p99:   " << percentile(all_lat, 0.990) << "\n"
-              << "    p99.9: " << percentile(all_lat, 0.999) << "\n"
-              << "    max:   " << all_lat.back() << "\n";
+               << "    min:   " << all_lat.front() << "\n"
+               << "    mean:  " << sum / all_lat.size() << "\n"
+               << "    p50:   " << percentile(all_lat, 0.500) << "\n"
+               << "    p90:   " << percentile(all_lat, 0.900) << "\n"
+               << "    p99:   " << percentile(all_lat, 0.990) << "\n"
+               << "    p99.9: " << percentile(all_lat, 0.999) << "\n"
+               << "    max:   " << all_lat.back() << "\n";
   } else if (pipeline > 1) {
     std::cout << "\n  Latency: N/A in pipelined mode"
                  "window time cannot be split per op.\n"
@@ -345,3 +388,4 @@ int main(int argc, char *argv[]) {
   platform::platform_net_cleanup();
   return 0;
 }
+

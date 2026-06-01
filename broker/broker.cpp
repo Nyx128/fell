@@ -57,6 +57,9 @@ namespace fell {
           if (ev.flags & platform::PF_READ) {
             on_readable(*conn);
           }
+          if (ev.flags & platform::PF_WRITE) {
+            on_writable(*conn);
+          }
         }
       }
     }
@@ -97,31 +100,49 @@ namespace fell {
         batch_resp.insert(batch_resp.end(), resp.begin(), resp.end());
       }
 
-      // Single send for the entire batch
+      // Enqueue for non-blocking write
       if (!batch_resp.empty()) {
-        if (!send_all(conn.fd, batch_resp.data(), batch_resp.size())) {
-          on_hangup(conn);
-          return;
+        conn.outbound.data.insert(conn.outbound.data.end(), batch_resp.begin(), batch_resp.end());
+        int flags = platform::PF_WRITE;
+        if (!conn.read_disabled) {
+          flags |= platform::PF_READ;
+        }
+        poller_->modify(conn.fd, flags, &conn); // modify: socket already registered
+      }
+
+      // Connection-level backpressure (16MB threshold)
+      if (conn.outbound.data.size() - conn.outbound.write_offset > 16 * 1024 * 1024) {
+        if (!conn.read_disabled) {
+          poller_->modify(conn.fd, platform::PF_WRITE, &conn); // disable PF_READ
+          conn.read_disabled = true;
         }
       }
     }
   }
 
-  bool Broker::send_all(socket_t fd, const uint8_t *data, size_t len) {
-    size_t sent = 0;
-    while (sent < len) {
-      int n =
-          ::send(fd, reinterpret_cast<const char *>(data + sent), static_cast<int>(len - sent), 0);
-      if (n < 0) {
-        // would_block here means the send buffer is full.
-        // A proper fix is a per-connection write queue + PF_WRITE event
-        // (Phase 3). For Phase 1, disconnect — a stalled connection must
-        // not block the reactor.
-        return false;
+  void Broker::on_writable(ConnectionState &conn) {
+    auto &out = conn.outbound;
+    if (out.write_offset < out.data.size()) {
+      int n = ::send(conn.fd, reinterpret_cast<const char *>(out.data.data() + out.write_offset),
+                     static_cast<int>(out.data.size() - out.write_offset), 0);
+      if (n > 0) {
+        out.write_offset += static_cast<size_t>(n);
+      } else if (n < 0 && !platform::would_block()) {
+        on_hangup(conn);
+        return;
       }
-      sent += static_cast<size_t>(n);
     }
-    return true;
+
+    if (out.write_offset == out.data.size()) {
+      out.data.clear();
+      out.write_offset = 0;
+
+      conn.read_disabled = false; // re-enable read when drained
+      // i had this on add and my performance died TwT, dont make mistakes like these, silent
+      // mistakes have O(n^2) cost here
+      poller_->modify(conn.fd, platform::PF_READ,
+                      &conn); // modify, because socket already registered
+    }
   }
 
 } // namespace fell

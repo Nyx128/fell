@@ -23,6 +23,7 @@ namespace fell {
     SUBSCRIBE = 0x03,     ///< Consume continuous streaming updates
     FETCH = 0x04,         ///< Single-shot query for committed records
     COMMIT_OFFSET = 0x05, ///< Commit client consumer progress (Ack offsets)
+    PUBLISH_V2 = 0x06,    ///< Produce a message to a topic partition with routing key
 
     // broker to client
     ACK = 0x10,            ///< Operation succeeded
@@ -40,7 +41,8 @@ namespace fell {
     INVALID_OFFSET = 0x03,    ///< Requested offset exceeds next log offset
     UNKNOWN_OP = 0x04,        ///< Unrecognized frame opcode
     MALFORMED_REQUEST = 0x05, ///< Frame structure or payload checksum failed
-    BUSY = 0x06               ///< Bounded partition queue full (backpressure)
+    BUSY = 0x06,              ///< Bounded partition queue full (backpressure)
+    INTERNAL_ERROR = 0x07     ///< Internal failure (e.g. partition closed)
   };
 
   namespace proto {
@@ -64,6 +66,20 @@ namespace fell {
       uint8_t topic_len;      ///< Topic name length
       char topic[255];        ///< Topic name string
       uint16_t partition;     ///< Target partition index, or 0xFFFF for round-robin
+      uint32_t payload_size;  ///< Size of the trailing payload binary
+      // payload_size raw bytes follow immediately after this struct
+    };
+
+    /**
+     * @struct PublishV2Req
+     * @brief Raw frame for producing a message with a routing key.
+     */
+    struct PublishV2Req {
+      uint8_t topic_len;      ///< Topic name length
+      char topic[255];        ///< Topic name string
+      uint16_t partition;     ///< Target partition index, or 0xFFFF for round-robin
+      uint8_t key_len;        ///< Routing key length
+      char key[255];          ///< Routing key string
       uint32_t payload_size;  ///< Size of the trailing payload binary
       // payload_size raw bytes follow immediately after this struct
     };

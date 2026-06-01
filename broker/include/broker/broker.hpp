@@ -5,8 +5,10 @@
 #include "broker/request_handler.hpp"
 #include "broker/topic_registry.hpp"
 #include "platform/ipoller.hpp"
-#include "platform/socket.hpp"
+#include "storage/storage_options.hpp"
+
 #include <atomic>
+#include <filesystem>
 #include <memory>
 
 namespace fell {
@@ -50,10 +52,8 @@ namespace fell {
   private:
     void event_loop();
     void on_readable(ConnectionState &conn);
+    void on_writable(ConnectionState &conn);
     void on_hangup(ConnectionState &conn);
-
-    bool send_all(socket_t fd, const uint8_t *data, size_t len);
-
     std::unique_ptr<platform::IPoller> poller_;
     Acceptor acceptor_;
     ConnectionManager conn_mgr_;

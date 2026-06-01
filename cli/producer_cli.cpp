@@ -4,6 +4,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 using namespace fell;
 
@@ -102,6 +104,8 @@ int main(int argc, char *argv[]) {
   uint16_t partitions = 1;
   std::string message = "hello fell";
   int count = 1;
+  bool retry_on_busy = false;
+  std::string key = "";
 
   // Manual CLI parsing
   // TODO: Replace with a proper CLI parsing library for robustness and help messages
@@ -121,6 +125,10 @@ int main(int argc, char *argv[]) {
       message = argv[++i];
     else if (arg == "--count" && i + 1 < argc)
       count = std::stoi(argv[++i]);
+    else if (arg == "--retry-on-busy")
+      retry_on_busy = true;
+    else if (arg == "--key" && i + 1 < argc)
+      key = argv[++i];
   }
 
   if (topic.empty()) {
@@ -184,38 +192,60 @@ int main(int argc, char *argv[]) {
       payload += " #" + std::to_string(i);
     }
 
-    proto::PublishReq pub = {};
+    proto::PublishV2Req pub = {};
     pub.topic_len = static_cast<uint8_t>(topic.size());
     std::memcpy(pub.topic, topic.data(), topic.size());
-    pub.partition = swap_be16(0xFFFF); // broker round-robin picks
+    pub.partition = swap_be16(0xFFFF); // broker round-robin or key fallback
+    pub.key_len = static_cast<uint8_t>(key.size());
+    if (pub.key_len > 0) {
+      std::memcpy(pub.key, key.data(), key.size());
+    }
     pub.payload_size = swap_be32(static_cast<uint32_t>(payload.size()));
 
-    std::vector<uint8_t> pub_buf(sizeof(proto::PublishReq) + payload.size());
-    std::memcpy(pub_buf.data(), &pub, sizeof(proto::PublishReq));
-    std::memcpy(pub_buf.data() + sizeof(proto::PublishReq), payload.data(), payload.size());
+    std::vector<uint8_t> pub_buf(sizeof(proto::PublishV2Req) + payload.size());
+    std::memcpy(pub_buf.data(), &pub, sizeof(proto::PublishV2Req));
+    std::memcpy(pub_buf.data() + sizeof(proto::PublishV2Req), payload.data(), payload.size());
 
-    if (!write_frame(fd, Op::PUBLISH, pub_buf.data(), pub_buf.size())) {
-      std::cerr << "Failed to send PUBLISH request on message " << i << std::endl;
-      break;
+    int backoff_ms = 10;
+    bool success = false;
+
+    while (!success) {
+      if (!write_frame(fd, Op::PUBLISH_V2, pub_buf.data(), pub_buf.size())) {
+        std::cerr << "Failed to send PUBLISH_V2 request on message " << i << std::endl;
+        break; // socket error
+      }
+
+      Frame resp;
+      if (!read_frame(fd, resp)) {
+        std::cerr << "Failed to read PUBLISH_V2 response on message " << i << std::endl;
+        break; // socket error
+      }
+
+      if (resp.op == Op::ERR) {
+        const auto *err = reinterpret_cast<const proto::ErrorResp *>(resp.payload.data());
+        std::string msg(err->msg, err->msg_len);
+
+        if (retry_on_busy && err->code == static_cast<uint8_t>(ErrCode::BUSY)) {
+          std::cout << "Broker BUSY, sleeping for " << backoff_ms << "ms..." << std::endl;
+          std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+          backoff_ms = std::min(backoff_ms * 2, 1000);
+          continue; // retry loop
+        }
+
+        std::cerr << "PUBLISH_V2 failed: " << msg << std::endl;
+        break; // non-retryable or retries disabled
+      }
+
+      const auto *ack = reinterpret_cast<const proto::AckResp *>(resp.payload.data());
+      uint64_t offset = swap_be64(ack->value);
+      std::cout << "Published message: '" << payload << "' -> Assigned offset: " << offset
+                << std::endl;
+      success = true;
     }
-
-    Frame resp;
-    if (!read_frame(fd, resp)) {
-      std::cerr << "Failed to read PUBLISH response on message " << i << std::endl;
-      break;
+    
+    if (!success) {
+      break; // Abort further publishing if an unrecoverable error occurred
     }
-
-    if (resp.op == Op::ERR) {
-      const auto *err = reinterpret_cast<const proto::ErrorResp *>(resp.payload.data());
-      std::string msg(err->msg, err->msg_len);
-      std::cerr << "PUBLISH failed: " << msg << std::endl;
-      break;
-    }
-
-    const auto *ack = reinterpret_cast<const proto::AckResp *>(resp.payload.data());
-    uint64_t offset = swap_be64(ack->value);
-    std::cout << "Published message: '" << payload << "' -> Assigned offset: " << offset
-              << std::endl;
   }
 
   platform::close_socket(fd);

@@ -47,6 +47,8 @@ namespace fell {
       return handle_create_topic(f);
     case Op::PUBLISH:
       return handle_publish(f, conn);
+    case Op::PUBLISH_V2:
+      return handle_publish_v2(f, conn);
     case Op::SUBSCRIBE:
       return handle_subscribe(f, conn);
     case Op::FETCH:
@@ -83,6 +85,7 @@ namespace fell {
   }
 
   std::vector<uint8_t> RequestHandler::handle_publish(const Frame &f, ConnectionState &conn) {
+    publish_requests_total_++;
     if (f.payload.size() < sizeof(proto::PublishReq)) {
       return encode_error(ErrCode::MALFORMED_REQUEST, "payload too small for PUBLISH header");
     }
@@ -127,8 +130,78 @@ namespace fell {
 
     storage::AppendResult result = p->append(payload_ptr, payload_len);
     if (!result.accepted) {
+      publish_busy_total_++;
+      if (result.error == storage::AppendError::Closed) {
+        return encode_error(ErrCode::INTERNAL_ERROR, "Partition is closed");
+      }
       return encode_error(ErrCode::BUSY, "Partition append queue is full");
     }
+    bytes_published_total_ += payload_len;
+    return encode_ack(result.offset);
+  }
+
+  // FNV-1a hash
+  static uint64_t fnv1a(const char *data, size_t len) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (size_t i = 0; i < len; ++i) {
+      hash ^= static_cast<uint8_t>(data[i]);
+      hash *= 1099511628211ULL;
+    }
+    return hash;
+  }
+
+  std::vector<uint8_t> RequestHandler::handle_publish_v2(const Frame &f, ConnectionState &conn) {
+    publish_requests_total_++;
+    if (f.payload.size() < sizeof(proto::PublishV2Req)) {
+      return encode_error(ErrCode::MALFORMED_REQUEST, "payload too small for PUBLISH_V2 header");
+    }
+
+    const auto *req = reinterpret_cast<const proto::PublishV2Req *>(f.payload.data());
+    uint32_t payload_size = read_be32(reinterpret_cast<const uint8_t *>(&req->payload_size));
+
+    if (f.payload.size() != sizeof(proto::PublishV2Req) + payload_size) {
+      return encode_error(ErrCode::MALFORMED_REQUEST, "Payload size mismatch in PUBLISH_V2");
+    }
+
+    if (req->topic_len == 0) {
+      return encode_error(ErrCode::MALFORMED_REQUEST, "Topic name cannot be empty");
+    }
+
+    std::string topic_name(req->topic, req->topic_len);
+    uint16_t partition = read_be16(reinterpret_cast<const uint8_t *>(&req->partition));
+    uint16_t total_partitions = registry_.num_partitions(topic_name);
+    if (total_partitions == 0) {
+      return encode_error(ErrCode::UNKNOWN_TOPIC, "Topic does not exist");
+    }
+
+    if (req->key_len > 0) {
+      // Key-based deterministic routing
+      partition = static_cast<uint16_t>(fnv1a(req->key, req->key_len) % total_partitions);
+    } else if (partition == 0xFFFF) {
+      // Round-robin fallback
+      partition = conn.rr_counter % total_partitions;
+      conn.rr_counter++;
+    } else if (partition >= total_partitions) {
+      return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition index out of bounds");
+    }
+
+    Partition *p = registry_.get_partition(topic_name, partition);
+    if (!p) {
+      return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition registry lookup failed");
+    }
+
+    const uint8_t *payload_ptr = f.payload.data() + sizeof(proto::PublishV2Req);
+    uint32_t payload_len = static_cast<uint32_t>(f.payload.size() - sizeof(proto::PublishV2Req));
+
+    storage::AppendResult result = p->append(payload_ptr, payload_len);
+    if (!result.accepted) {
+      publish_busy_total_++;
+      if (result.error == storage::AppendError::Closed) {
+        return encode_error(ErrCode::INTERNAL_ERROR, "Partition is closed");
+      }
+      return encode_error(ErrCode::BUSY, "Partition append queue is full");
+    }
+    bytes_published_total_ += payload_len;
     return encode_ack(result.offset);
   }
 

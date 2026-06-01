@@ -60,4 +60,41 @@ static void BM_Decoder_Fragmented(benchmark::State &state) {
 }
 BENCHMARK(BM_Decoder_Fragmented);
 
+static uint64_t fnv1a(const char *data, size_t len) {
+  uint64_t hash = 14695981039346656037ULL;
+  for (size_t i = 0; i < len; ++i) {
+    hash ^= static_cast<uint8_t>(data[i]);
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+static void BM_FNV1a_Hash_8Bytes(benchmark::State &state) {
+  const std::string key = "user-123";
+  for (auto _ : state) {
+    uint64_t h = fnv1a(key.data(), key.size());
+    benchmark::DoNotOptimize(h);
+  }
+}
+BENCHMARK(BM_FNV1a_Hash_8Bytes);
+
+static void BM_FNV1a_Hash_32Bytes(benchmark::State &state) {
+  const std::string key = "billing-transaction-routing-key-";
+  for (auto _ : state) {
+    uint64_t h = fnv1a(key.data(), key.size());
+    benchmark::DoNotOptimize(h);
+  }
+}
+BENCHMARK(BM_FNV1a_Hash_32Bytes);
+
+static void BM_FNV1a_Hash_128Bytes(benchmark::State &state) {
+  const std::string key(128, 'A');
+  for (auto _ : state) {
+    uint64_t h = fnv1a(key.data(), key.size());
+    benchmark::DoNotOptimize(h);
+  }
+}
+BENCHMARK(BM_FNV1a_Hash_128Bytes);
+
 BENCHMARK_MAIN();
+

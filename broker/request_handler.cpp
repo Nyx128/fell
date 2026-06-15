@@ -38,11 +38,15 @@ namespace fell {
     p[7] = static_cast<uint8_t>(val & 0xFF);
   }
 
-  RequestHandler::RequestHandler(TopicRegistry &registry) : registry_(registry) {
+  RequestHandler::RequestHandler(TopicRegistry &registry, const repl::ClusterConfig *cfg,
+                                 repl::PartitionMetaRegistry *meta_reg, DeferAckCb defer_cb)
+      : registry_(registry), cfg_(cfg), meta_reg_(meta_reg), defer_cb_(std::move(defer_cb)) {
   }
 
   std::vector<uint8_t> RequestHandler::handle(const Frame &f, ConnectionState &conn) {
     switch (f.op) {
+    case Op::METADATA_REQ:
+      return handle_metadata_req(f);
     case Op::CREATE_TOPIC:
       return handle_create_topic(f);
     case Op::PUBLISH:
@@ -56,6 +60,70 @@ namespace fell {
     default:
       return encode_error(ErrCode::UNKNOWN_OP, "Unknown operation");
     }
+  }
+
+  std::vector<uint8_t> RequestHandler::handle_metadata_req(const Frame &f) {
+    if (f.payload.size() < sizeof(proto::MetadataReq)) {
+      return encode_error(ErrCode::MALFORMED_REQUEST, "payload too small for METADATA_REQ");
+    }
+    const auto *req = reinterpret_cast<const proto::MetadataReq *>(f.payload.data());
+    std::string topic_name(req->topic, req->topic_len);
+
+    if (!cfg_ || !meta_reg_) {
+      return encode_error(ErrCode::METADATA_UNAVAILABLE, "Cluster metadata unavailable");
+    }
+
+    uint16_t num_partitions = registry_.num_partitions(topic_name);
+
+    std::vector<uint8_t> resp;
+    // num_brokers (2), [id(4), host_len(1), host, client_port(2)]
+    uint16_t num_brokers = static_cast<uint16_t>(1 + cfg_->peers.size());
+    uint8_t num_brokers_buf[2];
+    num_brokers_buf[0] = (num_brokers >> 8) & 0xFF;
+    num_brokers_buf[1] = num_brokers & 0xFF;
+    resp.insert(resp.end(), num_brokers_buf, num_brokers_buf + 2);
+
+    auto add_broker = [&](uint32_t id, const std::string &host, uint16_t client_port) {
+      uint8_t buf[5];
+      write_be32(buf, id);
+      buf[4] = static_cast<uint8_t>(host.size());
+      resp.insert(resp.end(), buf, buf + 5);
+      resp.insert(resp.end(), host.begin(), host.end());
+      uint8_t port_buf[2];
+      port_buf[0] = (client_port >> 8) & 0xFF;
+      port_buf[1] = client_port & 0xFF;
+      resp.insert(resp.end(), port_buf, port_buf + 2);
+    };
+
+    add_broker(cfg_->broker_id, "127.0.0.1", cfg_->client_port);
+    for (const auto &peer : cfg_->peers) {
+      add_broker(peer.broker_id, peer.host, peer.client_port);
+    }
+
+    // num_partitions (2), [partition_index(2), leader_id(4)]
+    uint8_t num_part_buf[2];
+    num_part_buf[0] = (num_partitions >> 8) & 0xFF;
+    num_part_buf[1] = num_partitions & 0xFF;
+    resp.insert(resp.end(), num_part_buf, num_part_buf + 2);
+
+    uint32_t total_brokers = std::max<uint32_t>(1, static_cast<uint32_t>(1 + cfg_->peers.size()));
+    for (uint16_t i = 0; i < num_partitions; ++i) {
+      uint32_t leader_id = 0;
+      try {
+        auto &meta = meta_reg_->get(topic_name, i);
+        leader_id = meta.leader_id;
+      } catch (...) {
+        leader_id = i % total_brokers;
+      }
+
+      uint8_t part_buf[6];
+      part_buf[0] = (i >> 8) & 0xFF;
+      part_buf[1] = i & 0xFF;
+      write_be32(part_buf + 2, leader_id);
+      resp.insert(resp.end(), part_buf, part_buf + 6);
+    }
+
+    return encode_frame(Op::METADATA_RESP, resp.data(), resp.size());
   }
 
   std::vector<uint8_t> RequestHandler::handle_create_topic(const Frame &f) {
@@ -81,6 +149,13 @@ namespace fell {
     if (!success) {
       return encode_error(ErrCode::MALFORMED_REQUEST, "Topic already exists");
     }
+
+    // Seed partition roles for the new topic immediately.
+    if (cfg_ && meta_reg_) {
+      uint32_t num_brokers = std::max<uint32_t>(1, static_cast<uint32_t>(1 + cfg_->peers.size()));
+      meta_reg_->assign_roles(cfg_->broker_id, num_brokers, {topic_name}, {num_partitions});
+    }
+
     return encode_ack(0);
   }
 
@@ -119,6 +194,20 @@ namespace fell {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition index out of bounds");
     }
 
+    if (meta_reg_) {
+      try {
+        if (meta_reg_->get(topic_name, partition).role != repl::PartitionRole::Leader) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      } catch (...) {
+        uint32_t total_brokers =
+            std::max<uint32_t>(1, static_cast<uint32_t>(1 + cfg_->peers.size()));
+        if ((partition % total_brokers) != cfg_->broker_id) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      }
+    }
+
     Partition *p = registry_.get_partition(topic_name, partition);
     if (!p) {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition registry lookup failed");
@@ -137,6 +226,12 @@ namespace fell {
       return encode_error(ErrCode::BUSY, "Partition append queue is full");
     }
     bytes_published_total_ += payload_len;
+
+    if (cfg_ && cfg_->acks == -1 && defer_cb_) {
+      defer_cb_(topic_name, partition, result.offset, encode_ack(result.offset), conn.fd);
+      return {};
+    }
+
     return encode_ack(result.offset);
   }
 
@@ -185,6 +280,20 @@ namespace fell {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition index out of bounds");
     }
 
+    if (meta_reg_) {
+      try {
+        if (meta_reg_->get(topic_name, partition).role != repl::PartitionRole::Leader) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      } catch (...) {
+        uint32_t total_brokers =
+            std::max<uint32_t>(1, static_cast<uint32_t>(1 + cfg_->peers.size()));
+        if ((partition % total_brokers) != cfg_->broker_id) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      }
+    }
+
     Partition *p = registry_.get_partition(topic_name, partition);
     if (!p) {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition registry lookup failed");
@@ -202,6 +311,12 @@ namespace fell {
       return encode_error(ErrCode::BUSY, "Partition append queue is full");
     }
     bytes_published_total_ += payload_len;
+
+    if (cfg_ && cfg_->acks == -1 && defer_cb_) {
+      defer_cb_(topic_name, partition, result.offset, encode_ack(result.offset), conn.fd);
+      return {};
+    }
+
     return encode_ack(result.offset);
   }
 
@@ -229,6 +344,20 @@ namespace fell {
 
     if (partition >= total_partitions) {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition index out of bounds");
+    }
+
+    if (meta_reg_) {
+      try {
+        if (meta_reg_->get(topic_name, partition).role != repl::PartitionRole::Leader) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      } catch (...) {
+        uint32_t total_brokers =
+            std::max<uint32_t>(1, static_cast<uint32_t>(1 + cfg_->peers.size()));
+        if ((partition % total_brokers) != cfg_->broker_id) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      }
     }
 
     Partition *p = registry_.get_partition(topic_name, partition);
@@ -279,6 +408,20 @@ namespace fell {
 
     if (partition >= total_partitions) {
       return encode_error(ErrCode::UNKNOWN_PARTITION, "Partition index out of bounds");
+    }
+
+    if (meta_reg_) {
+      try {
+        if (meta_reg_->get(topic_name, partition).role != repl::PartitionRole::Leader) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      } catch (...) {
+        uint32_t total_brokers =
+            std::max<uint32_t>(1, static_cast<uint32_t>(1 + cfg_->peers.size()));
+        if ((partition % total_brokers) != cfg_->broker_id) {
+          return encode_error(ErrCode::NOT_LEADER, "Not leader for partition");
+        }
+      }
     }
 
     Partition *p = registry_.get_partition(topic_name, partition);

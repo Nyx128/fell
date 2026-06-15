@@ -21,9 +21,9 @@ namespace fell::storage {
   /**
    * @class SegmentReader
    * @brief Thread-safe passive reader for immutable or active log segment files.
-   * 
+   *
    * Design Insight:
-   * Decoupled from writing threads. Reads leverage random access lookups via raw file 
+   * Decoupled from writing threads. Reads leverage random access lookups via raw file
    * descriptors, allowing concurrent readers to bypass active batch serialization locks.
    */
   class SegmentReader {
@@ -40,8 +40,10 @@ namespace fell::storage {
     SegmentReader &operator=(const SegmentReader &) = delete;
 
     /**
-     * @brief Seeks to `file_position` and reads up to `max_count` records with offset >= `start_offset`.
-     * @param file_position Physical byte position to start scanning from (obtained via index lookup).
+     * @brief Seeks to `file_position` and reads up to `max_count` records with offset >=
+     * `start_offset`.
+     * @param file_position Physical byte position to start scanning from (obtained via index
+     * lookup).
      * @param start_offset Lower bound logical offset filter.
      * @param max_count Maximum records to fetch.
      * @return List of sequential valid records.
@@ -51,10 +53,10 @@ namespace fell::storage {
 
     /**
      * @brief Scans all records from `from_position` to validate checksums and bounds.
-     * 
-     * Mainly used during partition startup recovery. Scanning stops immediately at 
+     *
+     * Mainly used during partition startup recovery. Scanning stops immediately at
      * the first malformed record, torn write, or CRC mismatch.
-     * 
+     *
      * @param from_position Physical byte position to start scanning from.
      * @param out Collected list of sequential valid records.
      * @return Byte position immediately following the last fully valid record.

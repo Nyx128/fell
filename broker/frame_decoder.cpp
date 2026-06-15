@@ -37,7 +37,8 @@ namespace fell {
       f.op = static_cast<Op>(buf_[cursor + 4]);
 
       if (frame_len > 1) {
-        f.payload.assign(buf_.begin() + cursor + 5, buf_.begin() + cursor + 4 + static_cast<ptrdiff_t>(frame_len));
+        f.payload.assign(buf_.begin() + cursor + 5,
+                         buf_.begin() + cursor + 4 + static_cast<ptrdiff_t>(frame_len));
       }
 
       out.push_back(std::move(f));

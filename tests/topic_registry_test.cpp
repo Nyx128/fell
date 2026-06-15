@@ -5,7 +5,6 @@
 #include <thread>
 #include <vector>
 
-
 using namespace fell;
 
 class TopicRegistryTest : public ::testing::Test {

@@ -28,4 +28,12 @@ namespace fell {
     }
   }
 
+  ConnectionState *ConnectionManager::get(socket_t fd) {
+    auto it = conns_.find(fd);
+    if (it != conns_.end()) {
+      return it->second.get();
+    }
+    return nullptr;
+  }
+
 } // namespace fell

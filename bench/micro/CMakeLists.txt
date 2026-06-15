@@ -14,6 +14,10 @@ target_link_libraries(bench-registry PRIVATE broker_lib platform benchmark::benc
 add_executable(bench-storage storage_bench.cpp)
 target_link_libraries(bench-storage PRIVATE storage_lib platform benchmark::benchmark)
 
+# bench-replication target
+add_executable(bench-replication replication_bench.cpp)
+target_link_libraries(bench-replication PRIVATE broker_lib platform benchmark::benchmark)
+
 # clang-specific benchmark warning suppression
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     target_compile_options(bench-swapping PRIVATE
@@ -25,6 +29,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     )
 
     target_compile_options(bench-registry PRIVATE
+        -Wno-c2y-extensions
+    )
+
+    target_compile_options(bench-replication PRIVATE
         -Wno-c2y-extensions
     )
 endif()

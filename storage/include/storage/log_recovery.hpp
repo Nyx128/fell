@@ -18,12 +18,12 @@ namespace fell::storage {
 
   /**
    * @brief Performs validation and recovery on a partition directory.
-   * 
+   *
    * Design Insight:
    * Scans log segments in alphabetical/offset order. While historical sealed segments
-   * are trusted as immutable, the active segment is scanned record-by-record to identify and 
+   * are trusted as immutable, the active segment is scanned record-by-record to identify and
    * cleanly slice off partial/corrupted writes from sudden crash/power loss scenarios.
-   * 
+   *
    * @param partition_dir Partition directory path.
    * @return RecoveryResult containing state to safely resume log operations.
    */

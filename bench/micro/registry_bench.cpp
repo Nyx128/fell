@@ -32,6 +32,7 @@ static void BM_Registry_SingleThreadAppend(benchmark::State &state) {
 
     for (auto _ : state) {
       auto offset = partition->append(payload.data(), static_cast<uint32_t>(payload.size())).offset;
+      benchmark::DoNotOptimize(offset);
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * state.range(0));
   }

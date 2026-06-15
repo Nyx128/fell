@@ -1,10 +1,10 @@
-#include <gtest/gtest.h>
+#include "broker/protocol.hpp"
 #include "broker/request_handler.hpp"
 #include "broker/topic_registry.hpp"
-#include "broker/protocol.hpp"
-#include <filesystem>
-#include <vector>
 #include <cstring>
+#include <filesystem>
+#include <gtest/gtest.h>
+#include <vector>
 
 using namespace fell;
 
@@ -45,7 +45,7 @@ TEST_F(RequestHandlerTest, TooSmallPayloadBoundaryValidation) {
   invalid_frame.op = Op::CREATE_TOPIC;
   std::vector<uint8_t> dummy(2, 0);
   invalid_frame.payload.assign(dummy.begin(), dummy.end()); // CreateTopicReq requires 258 bytes
-  
+
   std::vector<uint8_t> err_resp = handler.handle(invalid_frame, conn);
 
   ASSERT_GE(err_resp.size(), 5);
@@ -72,7 +72,7 @@ TEST_F(RequestHandlerTest, SuccessfulTopicCreation) {
                                   sizeof(proto::CreateTopicReq));
 
   std::vector<uint8_t> create_resp = handler.handle(create_frame, conn);
-  
+
   ASSERT_GE(create_resp.size(), 5);
   EXPECT_EQ(create_resp[4], static_cast<uint8_t>(Op::ACK));
   EXPECT_EQ(registry.num_partitions("billing"), 2);
@@ -98,7 +98,7 @@ TEST_F(RequestHandlerTest, TopicDuplicateCreationFails) {
   handler.handle(create_frame, conn); // first creation
 
   std::vector<uint8_t> create_dup_resp = handler.handle(create_frame, conn);
-  
+
   EXPECT_EQ(create_dup_resp[4], static_cast<uint8_t>(Op::ERR));
   const auto *err_dup = reinterpret_cast<const proto::ErrorResp *>(create_dup_resp.data() + 5);
   EXPECT_EQ(err_dup->code, static_cast<uint8_t>(ErrCode::MALFORMED_REQUEST));
@@ -139,7 +139,7 @@ TEST_F(RequestHandlerTest, PublishToTopic) {
   pub_frame.payload.assign(pub_payload.begin(), pub_payload.end());
 
   std::vector<uint8_t> pub_resp = handler.handle(pub_frame, conn);
-  
+
   ASSERT_GE(pub_resp.size(), 5);
   EXPECT_EQ(pub_resp[4], static_cast<uint8_t>(Op::ACK));
   const auto *ack = reinterpret_cast<const proto::AckResp *>(pub_resp.data() + 5);

@@ -23,6 +23,18 @@ namespace fell {
     return store_->next_offset();
   }
 
+  void Partition::set_commit_callback(storage::CommitCallback cb) {
+    store_->set_commit_callback(std::move(cb));
+  }
+
+  void Partition::set_once_commit_callback(uint64_t offset, std::function<void()> cb) {
+    store_->set_once_commit_callback(offset, std::move(cb));
+  }
+
+  uint64_t Partition::committed_offset() const {
+    return store_->committed_offset();
+  }
+
   TopicRegistry::TopicRegistry(std::filesystem::path data_root,
                                storage::StorageOptions storage_options)
       : data_root_(std::move(data_root)), storage_options_(storage_options) {
@@ -111,6 +123,16 @@ namespace fell {
       return 0;
     }
     return static_cast<uint16_t>(it->second.size());
+  }
+
+  std::vector<TopicRegistry::TopicInfo> TopicRegistry::list_topics() const {
+    std::shared_lock<std::shared_mutex> lock(mu_);
+    std::vector<TopicInfo> topics;
+    topics.reserve(topics_.size());
+    for (const auto &[name, partitions] : topics_) {
+      topics.push_back({name, static_cast<uint16_t>(partitions.size())});
+    }
+    return topics;
   }
 
 } // namespace fell

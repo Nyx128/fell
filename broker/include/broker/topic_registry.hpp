@@ -18,7 +18,7 @@ namespace fell {
   /**
    * @class Partition
    * @brief Broker-level abstraction of a single log partition.
-   * 
+   *
    * Design Insight:
    * Acts as a clean intermediary boundary. Keeps network processing in the broker
    * separated from low-level storage batch thread concurrency, backpressure, and indexes.
@@ -49,6 +49,10 @@ namespace fell {
     /// @brief Gets the next expected logical offset.
     uint64_t next_offset() const;
 
+    void set_commit_callback(storage::CommitCallback cb);
+    void set_once_commit_callback(uint64_t offset, std::function<void()> cb);
+    uint64_t committed_offset() const;
+
   private:
     std::unique_ptr<storage::PartitionStore> store_;
   };
@@ -56,14 +60,19 @@ namespace fell {
   /**
    * @class TopicRegistry
    * @brief Global registry managing topics and their distributed partition logs.
-   * 
+   *
    * Design Insight:
-   * Combines high-concurrency read-write locks (`std::shared_mutex`) to optimize hot-path 
-   * routing lookups. `get_partition()` lookups utilize `std::string_view` to avoid 
+   * Combines high-concurrency read-write locks (`std::shared_mutex`) to optimize hot-path
+   * routing lookups. `get_partition()` lookups utilize `std::string_view` to avoid
    * allocations on request hot paths.
    */
   class TopicRegistry {
   public:
+    struct TopicInfo {
+      std::string name;
+      uint16_t partition_count;
+    };
+
     /**
      * @brief Initializes the global registry.
      * @param data_root Root directory containing all topic partitions.
@@ -96,6 +105,11 @@ namespace fell {
      * @brief Gets total configured partitions for a topic.
      */
     uint16_t num_partitions(std::string_view topic) const;
+
+    /**
+     * @brief Returns a snapshot of known topics and partition counts.
+     */
+    std::vector<TopicInfo> list_topics() const;
 
   private:
     std::unordered_map<std::string, std::vector<std::unique_ptr<Partition>>> topics_;

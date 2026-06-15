@@ -54,4 +54,7 @@ namespace fell::platform {
   // Linux: setsockopt(TCP_NODELAY). Windows: same via Winsock.
   void set_tcp_nodelay(socket_t fd);
 
+  // Creates a connected socket/pipe pair for cross-thread wakeups.
+  void create_notify_pair(socket_t *read_fd, socket_t *write_fd);
+
 } // namespace fell::platform

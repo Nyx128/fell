@@ -13,7 +13,8 @@ namespace fell {
   };
 
   struct ConnectionState {
-    explicit ConnectionState(size_t max_frame_size = 1048576) : decoder(max_frame_size) {}
+    explicit ConnectionState(size_t max_frame_size = 1048576) : decoder(max_frame_size) {
+    }
 
     socket_t fd;
     FrameDecoder decoder;

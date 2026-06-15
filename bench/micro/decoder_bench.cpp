@@ -97,4 +97,3 @@ static void BM_FNV1a_Hash_128Bytes(benchmark::State &state) {
 BENCHMARK(BM_FNV1a_Hash_128Bytes);
 
 BENCHMARK_MAIN();
-

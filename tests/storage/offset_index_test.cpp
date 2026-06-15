@@ -1,8 +1,8 @@
-#include <gtest/gtest.h>
-#include "storage/offset_index.hpp"
 #include "platform/endian.hpp"
 #include "platform/file.hpp"
+#include "storage/offset_index.hpp"
 #include <filesystem>
+#include <gtest/gtest.h>
 #include <vector>
 
 using namespace fell::storage;
@@ -22,20 +22,16 @@ protected:
 
 TEST_F(OffsetIndexTest, LookupReturnsCorrectPosition) {
   auto idx_path = std::filesystem::path("test-data/test.idx");
-  
+
   // Write a dummy index file
   file_t fd = open_file_append(idx_path);
   ASSERT_NE(fd, INVALID_FILE);
 
-  std::vector<IndexEntry> entries = {
-    {host_to_be64(10), host_to_be64(100)},
-    {host_to_be64(20), host_to_be64(200)},
-    {host_to_be64(30), host_to_be64(300)}
-  };
+  std::vector<IndexEntry> entries = {{host_to_be64(10), host_to_be64(100)},
+                                     {host_to_be64(20), host_to_be64(200)},
+                                     {host_to_be64(30), host_to_be64(300)}};
 
-  std::vector<IOBuffer> bufs = {
-    {entries.data(), entries.size() * sizeof(IndexEntry)}
-  };
+  std::vector<IOBuffer> bufs = {{entries.data(), entries.size() * sizeof(IndexEntry)}};
   ASSERT_TRUE(write_file_vec(fd, bufs.data(), 1));
   flush_file(fd);
   close_file(fd);

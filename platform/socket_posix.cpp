@@ -111,5 +111,16 @@ namespace fell::platform {
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
   }
 
+  void create_notify_pair(socket_t *read_fd, socket_t *write_fd) {
+    int fds[2];
+    if (::pipe(fds) == -1) {
+      throw std::runtime_error("pipe() failed for notify pair");
+    }
+    set_nonblocking(fds[0]);
+    set_nonblocking(fds[1]);
+    *read_fd = fds[0];
+    *write_fd = fds[1];
+  }
+
 } // namespace fell::platform
 #endif

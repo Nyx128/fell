@@ -126,5 +126,61 @@ namespace fell::platform {
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char *>(&flag), sizeof(flag));
   }
 
+  void create_notify_pair(socket_t *read_fd, socket_t *write_fd) {
+    SOCKET listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listener == INVALID_SOCKET)
+      throw std::runtime_error("socket failed");
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+
+    if (::bind(listener, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+      ::closesocket(listener);
+      throw std::runtime_error("bind failed for notify pair");
+    }
+
+    if (::listen(listener, 1) == SOCKET_ERROR) {
+      ::closesocket(listener);
+      throw std::runtime_error("listen failed for notify pair");
+    }
+
+    int addr_len = sizeof(addr);
+    if (::getsockname(listener, reinterpret_cast<sockaddr *>(&addr), &addr_len) == SOCKET_ERROR) {
+      ::closesocket(listener);
+      throw std::runtime_error("getsockname failed");
+    }
+
+    SOCKET client = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (client == INVALID_SOCKET) {
+      ::closesocket(listener);
+      throw std::runtime_error("socket failed");
+    }
+
+    if (::connect(client, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+      ::closesocket(listener);
+      ::closesocket(client);
+      throw std::runtime_error("connect failed for notify pair");
+    }
+
+    SOCKET server = ::accept(listener, nullptr, nullptr);
+    if (server == INVALID_SOCKET) {
+      ::closesocket(listener);
+      ::closesocket(client);
+      throw std::runtime_error("accept failed for notify pair");
+    }
+
+    ::closesocket(listener);
+
+    set_nonblocking(client);
+    set_nonblocking(server);
+    set_tcp_nodelay(client);
+    set_tcp_nodelay(server);
+
+    *read_fd = server;
+    *write_fd = client;
+  }
+
 } // namespace fell::platform
 #endif

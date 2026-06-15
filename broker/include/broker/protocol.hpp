@@ -11,9 +11,9 @@ namespace fell {
   /**
    * @enum Op
    * @brief Protocol Opcode identifier for network frame payloads.
-   * 
+   *
    * Design Insight:
-   * Uses non-overlapping ranges for request (0x0x) and response (0x1x) types 
+   * Uses non-overlapping ranges for request (0x0x) and response (0x1x) types
    * to simplify packet inspection, Wireshark parsing, and frame decoding logic.
    */
   enum class Op : uint8_t {
@@ -24,11 +24,13 @@ namespace fell {
     FETCH = 0x04,         ///< Single-shot query for committed records
     COMMIT_OFFSET = 0x05, ///< Commit client consumer progress (Ack offsets)
     PUBLISH_V2 = 0x06,    ///< Produce a message to a topic partition with routing key
+    METADATA_REQ = 0x07,  ///< Discover cluster metadata for routing
 
     // broker to client
     ACK = 0x10,            ///< Operation succeeded
     ERR = 0x11,            ///< Operation failed
     FETCH_RESPONSE = 0x12, ///< Bulk batch fetch return payload
+    METADATA_RESP = 0x13,  ///< Cluster metadata routing table
   };
 
   /**
@@ -36,13 +38,15 @@ namespace fell {
    * @brief Standardized error codes sent inside ErrorResp frames.
    */
   enum class ErrCode : uint8_t {
-    UNKNOWN_TOPIC = 0x01,     ///< Topic does not exist
-    UNKNOWN_PARTITION = 0x02, ///< Partition is out-of-bounds for the topic
-    INVALID_OFFSET = 0x03,    ///< Requested offset exceeds next log offset
-    UNKNOWN_OP = 0x04,        ///< Unrecognized frame opcode
-    MALFORMED_REQUEST = 0x05, ///< Frame structure or payload checksum failed
-    BUSY = 0x06,              ///< Bounded partition queue full (backpressure)
-    INTERNAL_ERROR = 0x07     ///< Internal failure (e.g. partition closed)
+    UNKNOWN_TOPIC = 0x01,       ///< Topic does not exist
+    UNKNOWN_PARTITION = 0x02,   ///< Partition is out-of-bounds for the topic
+    INVALID_OFFSET = 0x03,      ///< Requested offset exceeds next log offset
+    UNKNOWN_OP = 0x04,          ///< Unrecognized frame opcode
+    MALFORMED_REQUEST = 0x05,   ///< Frame structure or payload checksum failed
+    BUSY = 0x06,                ///< Bounded partition queue full (backpressure)
+    INTERNAL_ERROR = 0x07,      ///< Internal failure (e.g. partition closed)
+    NOT_LEADER = 0x08,          ///< Broker is not the leader for the partition
+    METADATA_UNAVAILABLE = 0x09 ///< Cluster metadata is currently unavailable
   };
 
   namespace proto {
@@ -59,14 +63,23 @@ namespace fell {
     };
 
     /**
+     * @struct MetadataReq
+     * @brief Raw frame for discovering partition leadership
+     */
+    struct MetadataReq {
+      uint8_t topic_len;
+      char topic[255];
+    };
+
+    /**
      * @struct PublishReq
      * @brief Raw frame for producing a message.
      */
     struct PublishReq {
-      uint8_t topic_len;      ///< Topic name length
-      char topic[255];        ///< Topic name string
-      uint16_t partition;     ///< Target partition index, or 0xFFFF for round-robin
-      uint32_t payload_size;  ///< Size of the trailing payload binary
+      uint8_t topic_len;     ///< Topic name length
+      char topic[255];       ///< Topic name string
+      uint16_t partition;    ///< Target partition index, or 0xFFFF for round-robin
+      uint32_t payload_size; ///< Size of the trailing payload binary
       // payload_size raw bytes follow immediately after this struct
     };
 
@@ -75,12 +88,12 @@ namespace fell {
      * @brief Raw frame for producing a message with a routing key.
      */
     struct PublishV2Req {
-      uint8_t topic_len;      ///< Topic name length
-      char topic[255];        ///< Topic name string
-      uint16_t partition;     ///< Target partition index, or 0xFFFF for round-robin
-      uint8_t key_len;        ///< Routing key length
-      char key[255];          ///< Routing key string
-      uint32_t payload_size;  ///< Size of the trailing payload binary
+      uint8_t topic_len;     ///< Topic name length
+      char topic[255];       ///< Topic name string
+      uint16_t partition;    ///< Target partition index, or 0xFFFF for round-robin
+      uint8_t key_len;       ///< Routing key length
+      char key[255];         ///< Routing key string
+      uint32_t payload_size; ///< Size of the trailing payload binary
       // payload_size raw bytes follow immediately after this struct
     };
 

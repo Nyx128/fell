@@ -1,12 +1,12 @@
-#include <gtest/gtest.h>
+#include "broker/protocol.hpp"
 #include "broker/request_handler.hpp"
 #include "broker/topic_registry.hpp"
-#include "broker/protocol.hpp"
-#include <filesystem>
-#include <vector>
-#include <cstring>
-#include <thread>
 #include <chrono>
+#include <cstring>
+#include <filesystem>
+#include <gtest/gtest.h>
+#include <thread>
+#include <vector>
 
 using namespace fell;
 
@@ -66,7 +66,8 @@ TEST_F(RequestHandlerV2Test, SuccessfulPublishV2WithKeys) {
   Frame create_frame;
   create_frame.op = Op::CREATE_TOPIC;
   create_frame.payload.assign(reinterpret_cast<const uint8_t *>(&create_req),
-                              reinterpret_cast<const uint8_t *>(&create_req) + sizeof(proto::CreateTopicReq));
+                              reinterpret_cast<const uint8_t *>(&create_req) +
+                                  sizeof(proto::CreateTopicReq));
   handler.handle(create_frame, conn);
 
   // Publish V2 requests with keys
@@ -127,7 +128,8 @@ TEST_F(RequestHandlerV2Test, PublishV2RoundRobinFallback) {
   Frame create_frame;
   create_frame.op = Op::CREATE_TOPIC;
   create_frame.payload.assign(reinterpret_cast<const uint8_t *>(&create_req),
-                              reinterpret_cast<const uint8_t *>(&create_req) + sizeof(proto::CreateTopicReq));
+                              reinterpret_cast<const uint8_t *>(&create_req) +
+                                  sizeof(proto::CreateTopicReq));
   handler.handle(create_frame, conn);
 
   // Send 6 messages without keys (partition = 0xFFFF, key_len = 0)
@@ -183,7 +185,8 @@ TEST_F(RequestHandlerV2Test, PublishV2BusyErrorHandling) {
   Frame create_frame;
   create_frame.op = Op::CREATE_TOPIC;
   create_frame.payload.assign(reinterpret_cast<const uint8_t *>(&create_req),
-                              reinterpret_cast<const uint8_t *>(&create_req) + sizeof(proto::CreateTopicReq));
+                              reinterpret_cast<const uint8_t *>(&create_req) +
+                                  sizeof(proto::CreateTopicReq));
   handler.handle(create_frame, conn);
 
   // Send first message (should fit in the queue or be currently processed)
@@ -205,7 +208,8 @@ TEST_F(RequestHandlerV2Test, PublishV2BusyErrorHandling) {
 
   auto resp1 = handler.handle(f, conn);
   // Send second message immediately (should saturate/exceed the queue_capacity = 1 and return BUSY)
-  // We try a few times in a loop since the I/O thread might be extremely fast, but with 1s batch wait it should hit BUSY.
+  // We try a few times in a loop since the I/O thread might be extremely fast, but with 1s batch
+  // wait it should hit BUSY.
   bool hit_busy = false;
   for (int i = 0; i < 5; ++i) {
     auto resp = handler.handle(f, conn);

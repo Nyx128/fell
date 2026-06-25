@@ -59,3 +59,5 @@ Thumbs.db
 
 #clangd stuff
 compile_commands.json
+
+*.ini

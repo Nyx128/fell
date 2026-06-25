@@ -9,16 +9,16 @@ namespace fell {
   /**
    * @class SmallPayload
    * @brief A small-buffer optimized (SSO) payload container.
-   * 
+   *
    * Avoids heap allocations for payloads less than or equal to `Capacity`.
    * Transparently falls back to heap allocation when payload exceeds the threshold.
    */
-  template <size_t Capacity = 64>
-  class SmallPayload {
+  template <size_t Capacity = 64> class SmallPayload {
   public:
     static constexpr size_t kSmallCapacity = Capacity;
 
-    SmallPayload() : size_(0), is_small_(true) {}
+    SmallPayload() : size_(0), is_small_(true) {
+    }
 
     ~SmallPayload() {
       free_heap();
@@ -56,8 +56,7 @@ namespace fell {
       return *this;
     }
 
-    template <typename Iter>
-    void assign(Iter begin, Iter end) {
+    template <typename Iter> void assign(Iter begin, Iter end) {
       free_heap();
       size_ = static_cast<size_t>(std::distance(begin, end));
       if (size_ <= kSmallCapacity) {
@@ -72,8 +71,12 @@ namespace fell {
       }
     }
 
-    bool empty() const { return size_ == 0; }
-    size_t size() const { return size_; }
+    bool empty() const {
+      return size_ == 0;
+    }
+    size_t size() const {
+      return size_;
+    }
 
     const uint8_t *data() const {
       return is_small_ ? inline_data_ : heap_data_;
@@ -108,7 +111,8 @@ namespace fell {
 
   class FrameDecoder {
   public:
-    explicit FrameDecoder(size_t max_frame_size = 1048576) : max_frame_size_(max_frame_size) {}
+    explicit FrameDecoder(size_t max_frame_size = 1048576) : max_frame_size_(max_frame_size) {
+    }
 
     // Append raw bytes received from a single read() call.
     // Emits complete Frame objects into out[]. Returns count emitted.

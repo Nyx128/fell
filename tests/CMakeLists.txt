@@ -29,6 +29,7 @@ target_include_directories(fell-tests PRIVATE
   ../broker/include 
   ../storage/include 
   ../platform/include
+  ../replication/include
 )
 
 target_link_libraries(fell-tests PRIVATE 

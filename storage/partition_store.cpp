@@ -60,6 +60,38 @@ namespace fell::storage {
     }
   }
 
+  void PartitionStore::set_commit_callback(CommitCallback cb) {
+    on_commit_cb_ = std::move(cb);
+  }
+
+  void PartitionStore::set_once_commit_callback(uint64_t offset, std::function<void()> cb) {
+    std::lock_guard<std::mutex> lk(once_cb_mu_);
+    if (offset < committed_offset_.load(std::memory_order_acquire)) {
+      cb();
+    } else {
+      once_callbacks_[offset].push_back(std::move(cb));
+    }
+  }
+
+  void PartitionStore::fire_once_callbacks(uint64_t committed_offset) {
+    std::vector<std::function<void()>> to_call;
+    {
+      std::lock_guard<std::mutex> lk(once_cb_mu_);
+      for (auto it = once_callbacks_.begin(); it != once_callbacks_.end();) {
+        if (it->first < committed_offset) {
+          to_call.insert(to_call.end(), std::make_move_iterator(it->second.begin()),
+                         std::make_move_iterator(it->second.end()));
+          it = once_callbacks_.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
+    for (auto &cb : to_call) {
+      cb();
+    }
+  }
+
   uint64_t PartitionStore::get_cached_timestamp_locked() {
     // Cache timestamps in millisecond buckets to avoid a clock read per append.
     if (ts_counter_ == 0) {
@@ -213,7 +245,8 @@ namespace fell::storage {
     return batch;
   }
 
-  void PartitionStore::write_batch(const std::vector<AppendCommand> &batch) {
+  void PartitionStore::write_batch(const std::vector<AppendCommand> &batch,
+                                   std::vector<CommittedRecord> &committed_records) {
     if (batch.empty())
       return;
 
@@ -264,6 +297,10 @@ namespace fell::storage {
     writer_->add_bytes_written(buffer.size());
     writer_->advance_next_offset(batch.size());
 
+    for (const auto &cmd : batch) {
+      committed_records.push_back({cmd.offset, cmd.timestamp_ms, cmd.payload});
+    }
+
     // Advance committed offset release semantics so Fetch threads see it
     const uint64_t last_offset = batch.back().offset;
     committed_offset_.store(last_offset + 1, std::memory_order_release);
@@ -279,7 +316,17 @@ namespace fell::storage {
         continue;
       }
 
-      write_batch(batch);
+      std::vector<CommittedRecord> committed_records;
+      uint64_t batch_base_offset = batch.front().offset;
+
+      write_batch(batch, committed_records);
+
+      uint64_t current_committed = committed_offset_.load(std::memory_order_acquire);
+      fire_once_callbacks(current_committed);
+
+      if (on_commit_cb_) {
+        on_commit_cb_(batch_base_offset, committed_records);
+      }
 
       // 1. Rotation policy (happens on batch boundaries)
       if (writer_->bytes_written() >= LOG_SEGMENT_MAX_BYTES) {

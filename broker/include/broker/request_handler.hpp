@@ -3,27 +3,22 @@
 #include "broker/connection_state.hpp"
 #include "broker/protocol.hpp"
 #include "broker/topic_registry.hpp"
+#include "replication/cluster_config.hpp"
+#include "replication/partition_meta.hpp"
 #include <atomic>
+#include <functional>
 #include <vector>
 
 namespace fell {
 
-  /**
-   * @class RequestHandler
-   * @brief Stateless routing controller for network requests.
-   * 
-   * Design Insight:
-   * Translates deserialized socket network frames into partition engine storage 
-   * operations. Encodes the outcome back into length-prefixed big-endian network frames.
-   * Promotes low latency by returning raw heap buffers (`std::vector<uint8_t>`) that 
-   * can be written directly to network socket buffers.
-   */
   class RequestHandler {
   public:
-    /**
-     * @brief Creates a request handler bound to the Topic Registry.
-     */
-    explicit RequestHandler(TopicRegistry &registry);
+    using DeferAckCb =
+        std::function<void(const std::string &topic, uint16_t partition, uint64_t offset,
+                           std::vector<uint8_t> ack_resp, int producer_fd)>;
+
+    RequestHandler(TopicRegistry &registry, const repl::ClusterConfig *cfg = nullptr,
+                   repl::PartitionMetaRegistry *meta_reg = nullptr, DeferAckCb defer_cb = nullptr);
 
     // Disable copy
     RequestHandler(const RequestHandler &) = delete;
@@ -38,6 +33,7 @@ namespace fell {
     std::vector<uint8_t> handle(const Frame &f, ConnectionState &conn);
 
   private:
+    std::vector<uint8_t> handle_metadata_req(const Frame &f);
     std::vector<uint8_t> handle_create_topic(const Frame &f);
     std::vector<uint8_t> handle_publish(const Frame &f, ConnectionState &conn);
     std::vector<uint8_t> handle_publish_v2(const Frame &f, ConnectionState &conn);
@@ -45,6 +41,9 @@ namespace fell {
     std::vector<uint8_t> handle_fetch(const Frame &f, ConnectionState &conn);
 
     TopicRegistry &registry_;
+    const repl::ClusterConfig *cfg_;
+    repl::PartitionMetaRegistry *meta_reg_;
+    DeferAckCb defer_cb_;
 
     // Phase 3 Metrics
     std::atomic<uint64_t> publish_requests_total_{0};

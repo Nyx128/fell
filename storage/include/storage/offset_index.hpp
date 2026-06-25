@@ -10,10 +10,10 @@ namespace fell::storage {
   /**
    * @class OffsetIndex
    * @brief In-memory sparse index mapping logical offsets to physical byte positions.
-   * 
+   *
    * Design Insight:
-   * Keeps segment indices lean. Rather than writing one index entry per record, we write 
-   * one entry every `INDEX_INTERVAL` records. The lookup executes a fast in-memory binary 
+   * Keeps segment indices lean. Rather than writing one index entry per record, we write
+   * one entry every `INDEX_INTERVAL` records. The lookup executes a fast in-memory binary
    * search (`std::lower_bound`) to identify the closest preceding physical file boundary,
    * minimizing random read disk latency and kernel I/O hops.
    */
@@ -37,7 +37,9 @@ namespace fell::storage {
     uint64_t lookup(uint64_t offset) const;
 
     /// @brief Gets total sparse index entries.
-    size_t size() const { return entries_.size(); }
+    size_t size() const {
+      return entries_.size();
+    }
 
   private:
     std::vector<IndexEntry> entries_;

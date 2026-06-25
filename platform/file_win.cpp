@@ -3,7 +3,6 @@
 #include <memory>
 #include <system_error>
 
-
 #ifdef FELL_PLATFORM_WINDOWS
 
 namespace fell::platform {
@@ -66,14 +65,14 @@ namespace fell::platform {
     if (!result) {
       DWORD err = GetLastError();
       // EOF can come back as ERROR_HANDLE_EOF on synchronous handles with OVERLAPPED offsets.
-      if (err == ERROR_HANDLE_EOF) return 0;
+      if (err == ERROR_HANDLE_EOF)
+        return 0;
       return -1;
     }
 
     // ReadFile succeeded but read 0 bytes — we are at exact EOF.
     return static_cast<ssize_t>(bytes_read);
   }
-
 
   bool flush_file(file_t fd) {
     return FlushFileBuffers(fd) != 0;

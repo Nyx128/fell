@@ -99,16 +99,17 @@ TEST_F(PartitionStoreTest, AppendAndFetch) {
 // ── 4. Queue full returns AppendError::Busy ───────────────────────────────────
 TEST_F(PartitionStoreTest, QueueFullReturnsBusy) {
   StorageOptions opts;
-  opts.queue_capacity    = 4;
+  opts.queue_capacity = 4;
   opts.max_pending_bytes = 64 * 1024 * 1024;
-  opts.batch_wait_us     = 500000; // slow drain so we can fill the queue
+  opts.batch_wait_us = 500000; // slow drain so we can fill the queue
   PartitionStore store("test-data", opts);
 
   std::vector<uint8_t> payload(64, 0xFF);
   int accepted = 0, busy = 0;
   for (int i = 0; i < 16; ++i) {
     auto r = store.append(payload.data(), payload.size());
-    if (r.accepted) ++accepted;
+    if (r.accepted)
+      ++accepted;
     else {
       EXPECT_EQ(r.error, AppendError::Busy);
       ++busy;
@@ -252,7 +253,8 @@ TEST_F(PartitionStoreTest, ConcurrentProducersReceiveUniqueOffsets) {
   for (int i = 0; i < kThreads; ++i) {
     threads.emplace_back(producer, i);
   }
-  for (auto &t : threads) t.join();
+  for (auto &t : threads)
+    t.join();
 
   // Collect all offsets and verify no duplicates
   std::vector<uint64_t> all;
@@ -281,9 +283,9 @@ TEST_F(PartitionStoreTest, ConcurrentProducersNoRecordCorruption) {
       auto r = store.append(payload.data(), payload.size());
       if (r.accepted) {
         uint64_t prev = last_accepted_offset.load(std::memory_order_relaxed);
-        while (r.offset + 1 > prev &&
-               !last_accepted_offset.compare_exchange_weak(prev, r.offset + 1,
-                                                           std::memory_order_relaxed)) {}
+        while (r.offset + 1 > prev && !last_accepted_offset.compare_exchange_weak(
+                                          prev, r.offset + 1, std::memory_order_relaxed)) {
+        }
       }
     }
   };
@@ -292,7 +294,8 @@ TEST_F(PartitionStoreTest, ConcurrentProducersNoRecordCorruption) {
   for (int i = 0; i < kThreads; ++i) {
     threads.emplace_back(producer, i);
   }
-  for (auto &t : threads) t.join();
+  for (auto &t : threads)
+    t.join();
 
   const uint64_t committed_count = last_accepted_offset.load();
   if (committed_count == 0) {
@@ -303,8 +306,8 @@ TEST_F(PartitionStoreTest, ConcurrentProducersNoRecordCorruption) {
   wait_for_commit(store, committed_count);
 
   // Read all committed records — verify no payload is corrupted (all 1 byte, 0-3)
-  auto fetched = store.fetch(0, static_cast<uint16_t>(
-      std::min(committed_count, static_cast<uint64_t>(1000))));
+  auto fetched =
+      store.fetch(0, static_cast<uint16_t>(std::min(committed_count, static_cast<uint64_t>(1000))));
   for (const auto &msg : fetched) {
     ASSERT_EQ(msg.payload.size(), 1u) << "Corrupted payload at offset " << msg.offset;
     ASSERT_LT(msg.payload[0], kThreads) << "Invalid payload byte at offset " << msg.offset;
@@ -314,9 +317,9 @@ TEST_F(PartitionStoreTest, ConcurrentProducersNoRecordCorruption) {
 // ── 12. Queue limit prevents unbounded memory growth ─────────────────────────
 TEST_F(PartitionStoreTest, QueueLimitPreventsMemoryGrowth) {
   StorageOptions opts;
-  opts.queue_capacity    = 8;
+  opts.queue_capacity = 8;
   opts.max_pending_bytes = 1024; // very small byte limit
-  opts.batch_wait_us     = 500000;
+  opts.batch_wait_us = 500000;
   PartitionStore store("test-data", opts);
 
   // Large payload — will hit byte limit quickly

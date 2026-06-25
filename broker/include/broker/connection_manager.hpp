@@ -9,7 +9,8 @@
 namespace fell {
   class ConnectionManager {
   public:
-    explicit ConnectionManager(size_t max_frame_size = 1048576) : max_frame_size_(max_frame_size) {}
+    explicit ConnectionManager(size_t max_frame_size = 1048576) : max_frame_size_(max_frame_size) {
+    }
 
     // Creates a ConnectionState for fd, registers with poller on PF_READ.
     // Returns the raw pointer (poller holds it as ctx).
@@ -17,6 +18,9 @@ namespace fell {
 
     // Removes from poller, closes fd, erases from map.
     void remove(socket_t fd, platform::IPoller &poller);
+
+    // Returns pointer to connection state or nullptr if not found
+    ConnectionState *get(socket_t fd);
 
   private:
     std::unordered_map<socket_t, std::unique_ptr<ConnectionState>> conns_;

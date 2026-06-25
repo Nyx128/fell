@@ -8,6 +8,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # for clangd / IDE support
 
 include(cmake/CompilerFlags.cmake)
 
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+include(FetchContent)
+FetchContent_Declare(inipp GIT_REPOSITORY https://github.com/mcmtroffaes/inipp.git)
+FetchContent_MakeAvailable(inipp)
+
 option(FELL_ENABLE_STORAGE_TIMING "Collect internal storage timing counters" OFF)
 
 #platform layer
@@ -71,8 +76,13 @@ add_library(broker_lib STATIC
     broker/request_handler.cpp
     broker/topic_registry.cpp
     broker/broker.cpp
+    replication/cluster_config.cpp
+    replication/partition_meta.cpp
+    replication/replica_manager.cpp
+    replication/replication_client.cpp
+    replication/replication_server.cpp
 )
-target_include_directories(broker_lib PUBLIC broker/include)
+target_include_directories(broker_lib PUBLIC broker/include replication/include ${inipp_SOURCE_DIR})
 target_link_libraries(broker_lib PUBLIC platform storage_lib)
 if(MSVC)
     target_compile_options(broker_lib PRIVATE /WX)

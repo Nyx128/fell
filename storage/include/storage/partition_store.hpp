@@ -11,6 +11,7 @@
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -21,16 +22,25 @@ namespace fell::storage {
 
   /**
    * @brief Struct representing a message retrieved from the storage subsystem.
-   * 
+   *
    * Design Insight:
    * Mirrors broker/topic_registry.hpp's Message struct to prevent the storage package
    * from depending directly on broker internals.
    */
   struct StoredMessage {
-    uint64_t offset;       ///< Assigned absolute offset
-    uint64_t timestamp_ms; ///< Log ingest timestamp in milliseconds
+    uint64_t offset;              ///< Assigned absolute offset
+    uint64_t timestamp_ms;        ///< Log ingest timestamp in milliseconds
     std::vector<uint8_t> payload; ///< Binary payload
   };
+
+  struct CommittedRecord {
+    uint64_t offset;
+    uint64_t timestamp_ms;
+    std::vector<uint8_t> payload;
+  };
+
+  using CommitCallback =
+      std::function<void(uint64_t base_offset, const std::vector<CommittedRecord> &)>;
 
   /**
    * @brief Internal command queued for background I/O serialization.
@@ -53,49 +63,51 @@ namespace fell::storage {
    * @brief Result of a fast append enqueue operation.
    */
   struct AppendResult {
-    bool accepted = false;         ///< True if successfully enqueued
-    uint64_t offset = 0;           ///< Assigned offset (monotonic, before write completion)
+    bool accepted = false; ///< True if successfully enqueued
+    uint64_t offset = 0;   ///< Assigned offset (monotonic, before write completion)
     AppendError error = AppendError::Busy;
 
     static AppendResult ok(uint64_t value) {
-      return {.accepted = true, .offset = value};
+      return {true, value, AppendError::Busy};
     }
 
     static AppendResult busy() {
-      return {.accepted = false, .error = AppendError::Busy};
+      return {false, 0, AppendError::Busy};
     }
 
     static AppendResult closed() {
-      return {.accepted = false, .error = AppendError::Closed};
+      return {false, 0, AppendError::Closed};
     }
   };
 
   /**
    * @class PartitionStore
    * @brief Thread-safe async storage partition engine.
-   * 
+   *
    * ### Architectural Overview
    * 1. **Fast Ingestion (Append Path)**:
    *    - Acquires immediate monotonic offsets.
    *    - Enqueues records to an internal bounded lock-free/low-lock deque.
-   *    - Non-blocking unless the queue bounds (records or memory capacity) are reached, 
+   *    - Non-blocking unless the queue bounds (records or memory capacity) are reached,
    *      which immediately triggers backpressure with `AppendResult::busy()`.
-   * 
+   *
    * 2. **Async Commit (I/O Path)**:
    *    - A dedicated single background thread pulls batches from the queue.
    *    - Serializes multiple records in a single sequential I/O system call.
    *    - Releases `committed_offset_` atomically, making written records visible to consumers.
    *    - Manages file segment rotations and fsync flushing asynchronously.
-   * 
+   *
    * 3. **Consistent Reads (Fetch Path)**:
    *    - Consumers query log segments up to `committed_offset_` only.
    *    - Protects readers from accessing uncommitted/dirty tail records.
    *    - Fast segment-index lookups bypass queue lock synchronization.
-   * 
+   *
    * ### Concurrency Assumptions
    * - **Producers**: Multiple parallel writer threads allowed (`append()` is thread-safe).
-   * - **Consumers**: Multiple parallel readers allowed (`fetch()` is thread-safe, locks metadata only on cache miss).
-   * - **Log Recovery**: Reconstructed at startup. Partial logs from crashes are trimmed to the last clean checksum state.
+   * - **Consumers**: Multiple parallel readers allowed (`fetch()` is thread-safe, locks metadata
+   * only on cache miss).
+   * - **Log Recovery**: Reconstructed at startup. Partial logs from crashes are trimmed to the last
+   * clean checksum state.
    */
   class PartitionStore {
   public:
@@ -111,6 +123,9 @@ namespace fell::storage {
     // Disable copy
     PartitionStore(const PartitionStore &) = delete;
     PartitionStore &operator=(const PartitionStore &) = delete;
+
+    void set_commit_callback(CommitCallback cb);
+    void set_once_commit_callback(uint64_t offset, std::function<void()> cb);
 
     /**
      * @brief Fast-path append. Enqueues the message to the background thread.
@@ -141,7 +156,9 @@ namespace fell::storage {
     std::filesystem::path find_segment_for(uint64_t offset) const;
     void io_loop();
     std::vector<AppendCommand> take_batch();
-    void write_batch(const std::vector<AppendCommand> &batch);
+    void write_batch(const std::vector<AppendCommand> &batch,
+                     std::vector<CommittedRecord> &committed_records);
+    void fire_once_callbacks(uint64_t committed_offset);
 
     struct SegmentCache {
       std::shared_ptr<OffsetIndex> index;
@@ -182,6 +199,10 @@ namespace fell::storage {
     // Async flush tracking
     uint32_t records_since_flush_ = 0;
     std::chrono::steady_clock::time_point last_flush_time_;
+
+    CommitCallback on_commit_cb_;
+    std::mutex once_cb_mu_;
+    std::unordered_map<uint64_t, std::vector<std::function<void()>>> once_callbacks_;
   };
 
 } // namespace fell::storage
